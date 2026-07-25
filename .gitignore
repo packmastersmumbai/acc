@@ -16,6 +16,9 @@
 !/.nojekyll
 
 # within re-included dirs, still drop these:
+__pycache__/
+*.pyc
+.pytest_cache/
 node_modules/
 .clasp.json
 test-report/
