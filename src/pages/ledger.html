@@ -31,7 +31,7 @@
     <div class="mono text-xs uppercase text-[#71717a]">Outstanding</div>
     <div id="outstanding" class="mono text-3xl mt-1">—</div>
   </section>
-  <h2 class="mono text-xs uppercase text-[#71717a] tracking-widest mb-2">Open invoices</h2>
+  <h2 id="openHeading" class="mono text-xs uppercase text-[#71717a] tracking-widest mb-2">Open invoices</h2>
   <div id="invoiceHost"></div>
 </main>
 
@@ -64,19 +64,27 @@
   function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
   var contactId = qp('id') || '116000000618000';
   var current = null, proof = null;
+  // Vendors are paid (bills), customers are collected from (invoices). The whole
+  // screen — heading, button label, confirm target — follows this one flag.
+  var side = 'customer', partyId = null;
 
   function renderInvoices(inv) {
     var host = document.getElementById('invoiceHost');
-    if (!inv || !inv.length) { AppStates.empty('#invoiceHost', 'No open invoices', 'This party is settled.'); return; }
+    var isVendor = side === 'vendor';
+    if (!inv || !inv.length) {
+      AppStates.empty('#invoiceHost', isVendor ? 'No open bills' : 'No open invoices', 'This party is settled.');
+      return;
+    }
     host.innerHTML = inv.map(function (i) {
       var pill = i.status === 'overdue' ? 'pill-overdue' : 'pill-open';
       return '<div class="flex items-center justify-between py-3 hairline-b">' +
-        '<div><div class="mono text-sm">' + esc(i.invoice_number) + '</div>' +
+        '<div><div class="mono text-sm">' + esc(i.doc_number) + '</div>' +
         '<div class="mono text-xs text-[#71717a]">' + esc(i.date) +
         ' · <span class="' + pill + ' px-1.5 py-0.5 uppercase">' + esc(i.status) + '</span></div></div>' +
         '<div class="flex items-center gap-3"><span class="mono text-sm">' + inr(i.balance) + '</span>' +
         '<button class="markBtn btn-primary px-3 py-1.5 mono text-xs uppercase" ' +
-        'data-id="' + esc(i.invoice_id) + '" data-num="' + esc(i.invoice_number) + '" data-bal="' + i.balance + '">Mark paid</button></div></div>';
+        'data-id="' + esc(i.doc_id) + '" data-num="' + esc(i.doc_number) + '" data-bal="' + i.balance + '">' +
+        (isVendor ? 'Pay' : 'Mark paid') + '</button></div></div>';
     }).join('');
     Array.prototype.forEach.call(host.querySelectorAll('.markBtn'), function (b) {
       b.addEventListener('click', function () { openSheet(b.dataset.id, b.dataset.num, parseFloat(b.dataset.bal)); });
@@ -85,6 +93,8 @@
 
   function openSheet(id, num, bal) {
     current = { id: id, num: num, bal: bal }; proof = null;
+    document.querySelector('#sheet .mono.text-xs').textContent = side === 'vendor' ? 'Pay bill' : 'Mark paid';
+    document.getElementById('confirmBtn').textContent = side === 'vendor' ? 'Confirm payment' : 'Confirm paid';
     document.getElementById('sheetInv').textContent = num;
     document.getElementById('sheetAmt').textContent = inr(bal);
     document.getElementById('proofLabel').textContent = 'Attach payment proof (optional)';
@@ -103,23 +113,44 @@
 
   document.getElementById('confirmBtn').addEventListener('click', function () {
     if (!current) return;
+
+    // This WRITES money to Zoho. Confirm with the amount named — a misapplied
+    // payment is invisible until the party disputes it.
+    if (!window.confirm((side === 'vendor' ? 'Pay this bill?' : 'Mark this invoice paid?') +
+                        '\n\n' + current.num + '\n' + inr(current.bal))) return;
+
+    var btn = this;
+    btn.disabled = true;
     AppStates.loading('#sheetStatus', 'Recording payment…');
-    google.script.run
-      .withSuccessHandler(function (res) {
-        // optional attachment after the payment is recorded
-        if (proof) {
-          google.script.run
-            .withSuccessHandler(function(){ finishPaid(); })
-            .withFailureHandler(function(){ finishPaid(); }) // payment succeeded; attach is best-effort
-            .attachToInvoice(current.id, proof.base64, 'proof.jpg', proof.mime);
-        } else { finishPaid(); }
-      })
-      .withFailureHandler(function () { AppStates.error('#sheetStatus', 'Could not record payment', null); })
-      .markInvoicePaid({ invoiceId: current.id });
+
+    var onDone = function () {
+      // Proof attaches to invoices only — Zoho's bill attachment is a different
+      // endpoint and is not wired yet, so vendors skip straight to done.
+      if (proof && side !== 'vendor') {
+        google.script.run
+          .withSuccessHandler(function(){ finishPaid(); })
+          .withFailureHandler(function(){ finishPaid(); }) // payment succeeded; attach is best-effort
+          .attachToInvoice(current.id, proof.base64, 'proof.jpg', proof.mime);
+      } else { finishPaid(); }
+    };
+    var onFail = function (e) {
+      btn.disabled = false;
+      AppStates.error('#sheetStatus',
+        'Could not record payment' + (e && e.message ? ' — ' + e.message : ''), null);
+    };
+
+    if (side === 'vendor') {
+      google.script.run.withSuccessHandler(onDone).withFailureHandler(onFail)
+        .payVendorBill({ vendorId: partyId, billId: current.id, amount: current.bal });
+    } else {
+      google.script.run.withSuccessHandler(onDone).withFailureHandler(onFail)
+        .markInvoicePaid({ invoiceId: current.id });
+    }
   });
 
   function finishPaid() {
     closeSheet();
+    document.getElementById('confirmBtn').disabled = false;
     load(); // refresh ledger
     window.__lastPaid = current;
   }
@@ -128,9 +159,15 @@
     AppStates.loading('#invoiceHost', 'Loading…');
     google.script.run
       .withSuccessHandler(function (d) {
+        side = d.side || 'customer';
+        partyId = d.contact_id || contactId;
         document.getElementById('partyName').textContent = d.contact_name;
         document.getElementById('outstanding').textContent = inr(d.outstanding);
-        renderInvoices(d.invoices);
+        document.querySelector('main .mono.text-xs.uppercase').textContent =
+          side === 'vendor' ? 'Payable' : 'Outstanding';
+        document.getElementById('openHeading').textContent =
+          side === 'vendor' ? 'Open bills' : 'Open invoices';
+        renderInvoices(d.documents || d.invoices);
       })
       .withFailureHandler(function () { AppStates.error('#invoiceHost', 'Could not load ledger', load); })
       .getPartyLedger(contactId);

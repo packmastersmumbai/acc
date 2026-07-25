@@ -57,15 +57,32 @@ const GAS_MOCK_SCRIPT = `
     invoiceNo: 'YPP/24-25/1182', amount: 174378, gstPct: 18
   };
 
-  // Party ledger (getPartyLedger): open invoices for a customer.
+  // Party ledger (getPartyLedger). The server is side-aware: customers carry
+  // open invoices, vendors carry open bills. Both come back as \`documents\`.
   var MOCK_LEDGER = {
+    contact_id: '116000000071027',
     contact_name: 'YARA FERTILISERS INDIA PVT. LTD.',
+    side: 'customer',
     outstanding: 412300,
-    invoices: [
-      { invoice_id: '116000000618057', invoice_number: 'INV-002841', date: '2026-03-31', balance: 195511, status: 'overdue' },
-      { invoice_id: '116000000618099', invoice_number: 'INV-002902', date: '2026-04-20', balance: 216789, status: 'sent' }
+    documents: [
+      { doc_id: '116000000618057', doc_number: 'INV-002841', date: '2026-03-31', balance: 195511, status: 'overdue' },
+      { doc_id: '116000000618099', doc_number: 'INV-002902', date: '2026-04-20', balance: 216789, status: 'sent' }
     ]
   };
+
+  var MOCK_LEDGER_VENDOR = {
+    contact_id: '116000000618777',
+    contact_name: 'Yash Poly Plast',
+    side: 'vendor',
+    outstanding: 7723056,
+    documents: [
+      { doc_id: '116000000700111', doc_number: 'YPP/24-25/1182', date: '2026-03-18', balance: 174378, status: 'overdue' },
+      { doc_id: '116000000700222', doc_number: 'YPP/24-25/1207', date: '2026-04-02', balance: 92500,  status: 'open' }
+    ]
+  };
+
+  // Backup / settings state (getBackupStatus)
+  var MOCK_BACKUP_STATUS = { nightly: false, lastBackup: null, lastRecords: null };
 
   // Per-test overrides: window.__gasOverride('parseBill', fn) makes the mock
   // return whatever fn(...args) returns for that method. Cleared on reload.
@@ -113,7 +130,13 @@ const GAS_MOCK_SCRIPT = `
                              { id: '1161923000000000460', name: 'Other Expenses' }]); },
       fileDocument:        function(b64, n, mime, folder) { dispatch('fileDocument', [b64, n, mime, folder], { fileId: 'drive-file-123', url: 'https://drive.google.com/file/d/drive-file-123' }); },
       backupNow:           function()            { dispatch('backupNow', [], { records: 5856, driveFileId: 'backup-2026-07-25' }); },
-      getPartyLedger:      function(id)          { dispatch('getPartyLedger', [id], MOCK_LEDGER); }
+      getBackupStatus:     function()            { dispatch('getBackupStatus', [], MOCK_BACKUP_STATUS); },
+      installNightlyBackup:function()            { dispatch('installNightlyBackup', [], { nightly: true, lastBackup: null, lastRecords: null }); },
+      removeNightlyBackup: function()            { dispatch('removeNightlyBackup', [], { nightly: false, lastBackup: null, lastRecords: null }); },
+      cacheBustAll:        function()            { dispatch('cacheBustAll', [], { success: true }); },
+      getOrgId:            function()            { dispatch('getOrgId', [], '661445520'); },
+      // vendor ledger is reachable via __gasOverride('getPartyLedger', ...)
+      getPartyLedger:      function(id)          { dispatch('getPartyLedger', [id], id === '116000000618777' ? MOCK_LEDGER_VENDOR : MOCK_LEDGER); }
     };
   }
 
