@@ -471,6 +471,22 @@ test('Tally: seller gstin, and the rate comes from the CGST/SGST lines', () => {
   expect(ctx.parseBill(RUKSON_OCR).gstin).toBe('27AAACJ4374M1Z7');
 });
 
+// Not every bill is 18%. Rukson charges CGST 2.5% + SGST 2.5% = 5% (corrugated
+// cartons): 1,746 is exactly 2.5% of 69,840, and 69,840 + 1,746 + 1,746 =
+// 73,332. Forcing 18 here would pick Zoho tax_id GST18 instead of GST5 and
+// post the bill with the wrong tax.
+test('Rukson is a 5% bill — the rate is read, never assumed to be 18', () => {
+  const b = ctx.parseBill(RUKSON_OCR);
+  expect(b.gstPct).toBe(5);
+  expect(b.amount).toBe(73332);
+});
+
+test('a 2.5+2.5 pair sums to 5, not to the more common 18', () => {
+  expect(ctx.parseBill('Total 100.00\nCGST 2.5%\nSGST 2.5%').gstPct).toBe(5);
+  expect(ctx.parseBill('Total 100.00\nCGST 6%\nSGST 6%').gstPct).toBe(12);
+  expect(ctx.parseBill('Total 100.00\nCGST 14%\nSGST 14%').gstPct).toBe(28);
+});
+
 test('parseBill degrades gracefully on sparse text', () => {
   const b = ctx.parseBill('handwritten note');
   expect(b.gstin).toBe(null);
