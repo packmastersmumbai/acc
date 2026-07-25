@@ -6,6 +6,8 @@
 /*
 # ...then re-include the app files and dirs:
 !/.gitignore
+!/index.html
+!/.nojekyll
 !/package.json
 !/package-lock.json
 !/playwright.config.js

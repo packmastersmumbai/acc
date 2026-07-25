@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>PackMasters Accounts</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; height: 100dvh; overflow: hidden; background: #fafaf9; }
+    /* Industrial Ledger loader — emerald spinner, stone background. */
+    #loader {
+      position: fixed; inset: 0; background: #fafaf9;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 18px; font-family: 'Hanken Grotesk', system-ui, sans-serif; z-index: 10;
+      transition: opacity 0.3s;
+    }
+    .sp-card  { display: flex; align-items: center; gap: 10px; }
+    .sp-badge {
+      width: 40px; height: 40px; border-radius: 6px; background: #047857; color: #fff;
+      display: grid; place-items: center; font-weight: 800; font-size: 17px; letter-spacing: .5px;
+    }
+    .sp-titles { display: flex; flex-direction: column; line-height: 1.15; }
+    .sp-title { color: #18181b; font-size: 17px; font-weight: 800; }
+    .sp-sub   { color: #71717a; font-size: 12px; font-weight: 500; font-family: 'JetBrains Mono', monospace; }
+    .sp-spin  {
+      width: 30px; height: 30px;
+      border: 3px solid rgba(4,120,87,0.15);
+      border-top-color: #047857;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #app {
+      position: fixed; inset: 0;
+      width: 100%; height: 100%; border: none;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    #app.ready { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div id="loader">
+    <div class="sp-card">
+      <div class="sp-badge">PM</div>
+      <div class="sp-titles">
+        <div class="sp-title">PackMasters Accounts</div>
+        <div class="sp-sub">Loading…</div>
+      </div>
+    </div>
+    <div class="sp-spin"></div>
+  </div>
+  <iframe
+    id="app"
+    src=""
+    allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone"
+    allowfullscreen
+  ></iframe>
+  <script>
+    var base = "https://script.google.com/macros/s/AKfycbx2_S2jQTG-_W05qMuv2Wg7eJNuIgb6NudhdS3k7xWib61TtvTElb5NNHpFx2XLTAuK/exec";
+    // pass through ?p=<page>&... so nav (which sets top.location.search) re-points the iframe
+    document.getElementById('app').src = base + (window.location.search || '');
+    var app = document.getElementById('app');
+    var loader = document.getElementById('loader');
+    app.addEventListener('load', function() {
+      app.classList.add('ready');
+      loader.style.opacity = '0';
+      setTimeout(function(){ loader.style.display = 'none'; }, 300);
+    });
+    // Fallback: hide loader after 12s if the iframe load event doesn't fire
+    setTimeout(function() {
+      app.classList.add('ready');
+      loader.style.display = 'none';
+    }, 12000);
+  </script>
+</body>
+</html>

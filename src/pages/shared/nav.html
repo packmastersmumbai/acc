@@ -5,13 +5,24 @@
 <script>
 (function () {
   window.go = function (page, params) {
-    var base = window.__appUrl || '';
     var qs = 'p=' + encodeURIComponent(page);
     if (params) for (var k in params) qs += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+
+    // Are we inside the GitHub Pages wrapper (a cross-origin top frame that hides
+    // the raw GAS URL)? If so, change the WRAPPER's query string — it keeps its
+    // clean github.io URL and re-points its iframe. If we're the top frame
+    // ourselves (opened raw), just navigate our own query string.
+    var framedByWrapper = false;
+    try { framedByWrapper = (window.top !== window.self) && (window.top.location.origin !== window.location.origin); }
+    catch (e) { framedByWrapper = true; } // cross-origin access throws → we ARE framed by another origin
+
+    if (framedByWrapper) {
+      try { window.top.location.search = '?' + qs; return; } catch (e) { /* fall through */ }
+    }
+    // standalone: navigate the app directly (break out of GAS's own sandbox iframe)
+    var base = window.__appUrl || '';
     var url = base ? (base + '?' + qs) : ('?' + qs);
-    // break out of the GAS sandbox iframe
-    try { window.top.location.href = url; }
-    catch (e) { window.location.href = url; }
+    try { window.top.location.href = url; } catch (e) { window.location.href = url; }
   };
   // Wire any element with data-go="pageName" (optional data-go-params='{"k":"v"}').
   document.addEventListener('DOMContentLoaded', function () {
