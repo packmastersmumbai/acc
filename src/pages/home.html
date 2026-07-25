@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Kadam Packaging - Home</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,100..900;1,100..900&amp;family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-secondary-fixed": "#1b1b1e",
+                    "inverse-primary": "#7bd8b1",
+                    "on-tertiary-fixed": "#3e0405",
+                    "inverse-surface": "#2c322e",
+                    "surface-container-highest": "#dfe4df",
+                    "on-secondary-container": "#656467",
+                    "secondary-container": "#e4e1e6",
+                    "surface-container": "#ebefea",
+                    "outline-variant": "#e7e5e4",
+                    "on-secondary": "#ffffff",
+                    "on-primary-fixed-variant": "#00513a",
+                    "on-surface": "#181d1a",
+                    "error-container": "#ffdad6",
+                    "primary-container": "#047857",
+                    "tertiary": "#863933",
+                    "secondary-fixed-dim": "#c8c5ca",
+                    "secondary": "#5f5e61",
+                    "on-secondary-fixed-variant": "#47464a",
+                    "tertiary-fixed": "#ffdad6",
+                    "on-tertiary-fixed-variant": "#792f2a",
+                    "surface-container-lowest": "#ffffff",
+                    "on-error": "#ffffff",
+                    "surface-variant": "#dfe4df",
+                    "surface-bright": "#fafaf9",
+                    "on-primary-fixed": "#002115",
+                    "surface-dim": "#d7dbd6",
+                    "primary-fixed": "#97f5cc",
+                    "error": "#ba1a1a",
+                    "on-tertiary-container": "#ffe4e0",
+                    "on-tertiary": "#ffffff",
+                    "background": "#fafaf9",
+                    "inverse-on-surface": "#edf2ed",
+                    "surface-container-low": "#f0f5f0",
+                    "surface": "#fafaf9",
+                    "primary": "#047857",
+                    "on-surface-variant": "#3e4943",
+                    "on-error-container": "#93000a",
+                    "surface-container-high": "#e5e9e4",
+                    "on-background": "#181d1a",
+                    "outline": "#6e7a73",
+                    "tertiary-container": "#a45049",
+                    "on-primary-container": "#9ffdd3",
+                    "on-primary": "#ffffff",
+                    "tertiary-fixed-dim": "#ffb4ac",
+                    "surface-tint": "#047857",
+                    "primary-fixed-dim": "#7bd8b1",
+                    "secondary-fixed": "#e4e1e6"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "stack-sm": "8px",
+                    "gutter": "12px",
+                    "stack-md": "16px",
+                    "container-padding": "20px",
+                    "base": "4px",
+                    "stack-lg": "24px"
+            },
+            "fontFamily": {
+                    "headline-md": [
+                            "Hanken Grotesk"
+                    ],
+                    "headline-lg": [
+                            "Hanken Grotesk"
+                    ],
+                    "data-md": [
+                            "JetBrains Mono"
+                    ],
+                    "body-lg": [
+                            "Hanken Grotesk"
+                    ],
+                    "data-lg": [
+                            "JetBrains Mono"
+                    ],
+                    "body-md": [
+                            "Hanken Grotesk"
+                    ],
+                    "label-sm": [
+                            "JetBrains Mono"
+                    ]
+            },
+            "fontSize": {
+                    "headline-md": [
+                            "20px",
+                            {
+                                    "lineHeight": "28px",
+                                    "letterSpacing": "-0.01em",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "headline-lg": [
+                            "24px",
+                            {
+                                    "lineHeight": "32px",
+                                    "letterSpacing": "-0.02em",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "data-md": [
+                            "14px",
+                            {
+                                    "lineHeight": "20px",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "body-lg": [
+                            "16px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "data-lg": [
+                            "18px",
+                            {
+                                    "lineHeight": "24px",
+                                    "letterSpacing": "-0.02em",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "body-md": [
+                            "14px",
+                            {
+                                    "lineHeight": "20px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "label-sm": [
+                            "12px",
+                            {
+                                    "lineHeight": "16px",
+                                    "letterSpacing": "0.05em",
+                                    "fontWeight": "400"
+                            }
+                    ]
+            }
+        },
+        },
+      }
+    </script>
+<style type="text/tailwindcss">
+        @layer utilities {
+            .hairline-b { border-bottom: 1px solid #e7e5e4; }
+            .hairline-t { border-top: 1px solid #e7e5e4; }
+            .hairline-y { border-top: 1px solid #e7e5e4; border-bottom: 1px solid #e7e5e4; }
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface antialiased min-h-screen pb-24 md:pb-0">
+<!-- TopAppBar (Web) -->
+<header class="hidden md:flex justify-between items-center w-full px-container-padding h-16 bg-background border-b border-outline-variant text-primary font-headline-lg text-headline-lg sticky top-0 z-40">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined cursor-pointer hover:bg-surface-container p-2 rounded transition-colors duration-200" data-icon="menu">menu</span>
+<span class="text-label-sm font-label-sm tracking-widest text-on-surface-variant uppercase">KADAM PACKAGING</span>
+</div>
+<div class="flex items-center gap-6 text-label-sm font-label-sm">
+<a class="text-secondary hover:bg-surface-container px-3 py-1 rounded transition-colors" href="#">Ledger</a>
+<a class="text-secondary hover:bg-surface-container px-3 py-1 rounded transition-colors" href="#">Inventory</a>
+<a class="text-primary hover:bg-surface-container px-3 py-1 rounded transition-colors" href="#">Scan</a>
+<a class="text-secondary hover:bg-surface-container px-3 py-1 rounded transition-colors" href="#">Reports</a>
+<a class="text-secondary hover:bg-surface-container px-3 py-1 rounded transition-colors" href="#">Settings</a>
+<span class="material-symbols-outlined cursor-pointer hover:bg-surface-container p-2 rounded transition-colors duration-200 ml-4" data-icon="account_balance_wallet">account_balance_wallet</span>
+</div>
+</header>
+<!-- Mobile Header -->
+<div class="md:hidden flex justify-between items-center w-full px-container-padding h-16 bg-background border-b border-outline-variant text-primary sticky top-0 z-40">
+<span class="material-symbols-outlined" data-icon="menu">menu</span>
+<span class="text-label-sm font-label-sm tracking-widest text-on-surface-variant uppercase">KADAM PACKAGING</span>
+<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
+</div>
+<!-- Main Content Canvas -->
+<main class="max-w-3xl mx-auto px-container-padding pt-stack-lg">
+<!-- Header Section -->
+<section class="mb-stack-lg">
+<div class="text-label-sm font-label-sm text-secondary uppercase tracking-widest mb-base">KADAM PACKAGING</div>
+<div id="recv" class="font-data-lg text-[32px] leading-tight text-on-surface mb-base tracking-tight">—</div>
+<div class="font-body-md text-secondary text-[13px]">receivable</div>
+</section>
+<!-- Scan Action -->
+<section class="mb-stack-lg">
+<button class="w-full flex items-center p-stack-md bg-primary-container/5 border border-dashed border-primary/30 rounded-lg hover:bg-primary-container/10 transition-colors text-left group">
+<span class="material-symbols-outlined text-primary mr-gutter group-hover:scale-110 transition-transform" data-icon="document_scanner">document_scanner</span>
+<div>
+<div class="font-headline-md text-[16px] text-primary">Scan bill or receipt</div>
+<div class="font-body-md text-secondary text-[13px]">GST · Udyam · remittance advice</div>
+</div>
+</button>
+</section>
+<!-- Stacked Figure Rows -->
+<section class="mb-stack-lg">
+<div class="flex justify-between items-center py-stack-md hairline-b hairline-t">
+<span class="font-label-sm text-label-sm text-secondary uppercase">PAYABLE</span>
+<span id="pay" class="font-data-md text-data-md text-on-surface">—</span>
+</div>
+<div class="flex justify-between items-center py-stack-md hairline-b">
+<span class="font-label-sm text-label-sm text-secondary uppercase">OVERDUE</span>
+<span id="overdue" class="font-data-md text-data-md text-[#ba1a1a]">—</span>
+</div>
+<div class="flex justify-between items-center py-stack-md hairline-b">
+<span class="font-label-sm text-label-sm text-secondary uppercase">UNRECONCILED</span>
+<span id="unrecon" class="font-data-md text-data-md text-on-surface">—</span>
+</div>
+</section>
+<!-- Recent List -->
+<section>
+<h2 class="font-headline-md text-headline-md text-on-surface mb-stack-md">Needs attention</h2>
+<div id="attention"></div>
+</section>
+</main>
+<!-- BottomNavBar (Mobile) -->
+<nav class="md:hidden fixed bottom-0 w-full z-50 flex justify-around items-center h-20 bg-surface px-gutter border-t border-[#e7e5e4] pb-2">
+<a class="flex flex-col items-center justify-center text-secondary px-3 py-1 hover:text-primary-fixed-dim active:scale-95 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="account_balance">account_balance</span>
+<span class="text-label-sm font-label-sm">Ledger</span>
+</a>
+<a class="flex flex-col items-center justify-center text-secondary px-3 py-1 hover:text-primary-fixed-dim active:scale-95 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="factory">factory</span>
+<span class="text-label-sm font-label-sm">Inventory</span>
+</a>
+<!-- Active Tab: Scan based on context of 'Home' focusing heavily on ledger/scan actions, but prompt mentioned Ledger is default Home often, we'll set Scan as active based on request details if needed, but Ledger fits better. Let's stick to JSON active state logic: Ledger is active. -->
+<a class="flex flex-col items-center justify-center text-primary bg-primary-container/10 rounded-xl px-3 py-1 active:scale-95 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="qr_code_scanner" data-weight="fill">qr_code_scanner</span>
+<span class="text-label-sm font-label-sm font-bold">Scan</span>
+</a>
+<a class="flex flex-col items-center justify-center text-secondary px-3 py-1 hover:text-primary-fixed-dim active:scale-95 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="analytics">analytics</span>
+<span class="text-label-sm font-label-sm">Reports</span>
+</a>
+<a class="flex flex-col items-center justify-center text-secondary px-3 py-1 hover:text-primary-fixed-dim active:scale-95 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="settings">settings</span>
+<span class="text-label-sm font-label-sm">Settings</span>
+</a>
+</nav>
+<?!= include('pages/shared/money') ?>
+<?!= include('pages/shared/states') ?>
+<script>
+(function () {
+  function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+
+  function renderAttention(list) {
+    var host = document.getElementById('attention');
+    if (!list || !list.length) {
+      AppStates.empty('#attention', 'All clear', 'No parties need attention right now.');
+      return;
+    }
+    host.innerHTML = list.map(function (p) {
+      var dot = p.overdue ? 'bg-[#ba1a1a]' : 'bg-primary-container';
+      return '<div class="flex items-center justify-between py-stack-md hairline-b">' +
+        '<div class="flex flex-col gap-base"><span class="font-body-md text-on-surface font-medium flex items-center gap-2">' +
+        esc(p.name) + '<span class="w-1.5 h-1.5 rounded-full ' + dot + '"></span></span>' +
+        (p.gap ? '<span class="font-label-sm text-secondary">' + esc(p.gap) + '</span>' : '') +
+        '</div><span class="font-data-md text-data-md text-on-surface">' + inr(p.amount) + '</span></div>';
+    }).join('');
+  }
+
+  function load() {
+    AppStates.loading('#attention', 'Loading…');
+    google.script.run
+      .withSuccessHandler(function (d) {
+        document.getElementById('recv').textContent = inr(d.receivable);
+        document.getElementById('pay').textContent = inr(d.payable);
+        document.getElementById('overdue').textContent = inr(d.overdue);
+        document.getElementById('unrecon').textContent = d.unreconciled + ' entries';
+        renderAttention(d.attention);
+      })
+      .withFailureHandler(function (e) {
+        AppStates.error('#attention', 'Could not load dashboard', load);
+      })
+      .getHomeData();
+  }
+
+  document.addEventListener('DOMContentLoaded', load);
+  if (document.readyState !== 'loading') load();
+})();
+</script>
+</body></html>

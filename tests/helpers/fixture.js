@@ -13,6 +13,14 @@ async function loadPage(page, pageName) {
   const filePath = path.join(ROOT, pageName + '.html');
   let html = fs.readFileSync(filePath, 'utf8');
 
+  // Resolve GAS includes: <?!= include('pages/xxx') ?> → the file's contents,
+  // so tests exercise the REAL shared partials exactly as GAS serves them.
+  html = html.replace(/<\?!?=\s*include\(\s*['"]([^'"]+)['"]\s*\)\s*\?>/g, (_, incPath) => {
+    const rel = incPath.replace(/^pages\//, '');
+    const incFile = path.join(ROOT, rel + '.html');
+    return fs.existsSync(incFile) ? fs.readFileSync(incFile, 'utf8') : '';
+  });
+
   // Strip GAS template tags: <?= expr ?> and <? ... ?>
   html = html.replace(/<\?=\s*[^?]+\?>/g, '"__GAS_TEMPLATE__"');
   html = html.replace(/<\?\s*[^?]+\?>/g, '');

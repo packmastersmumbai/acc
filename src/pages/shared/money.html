@@ -1,0 +1,23 @@
+<!-- Shared Indian-numbering currency formatter. Include via:
+       <?!= include('pages/shared/money') ?>
+     window.inr(2478140) -> "₹24,78,140"  window.inr(174378.5) -> "₹1,74,378.51"
+     Lakh/crore grouping (2,2,3 from the right). -->
+<script>
+(function () {
+  window.inr = function (n, opts) {
+    opts = opts || {};
+    var num = Number(n) || 0;
+    var neg = num < 0;
+    num = Math.abs(num);
+    var fixed = opts.paise ? num.toFixed(2) : String(Math.round(num));
+    var parts = fixed.split('.');
+    var whole = parts[0];
+    var dec = parts[1] ? '.' + parts[1] : '';
+    // Indian grouping: last 3 digits, then groups of 2.
+    var last3 = whole.length > 3 ? whole.slice(-3) : whole;
+    var rest = whole.length > 3 ? whole.slice(0, -3) : '';
+    if (rest) rest = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',';
+    return (neg ? '-₹' : '₹') + rest + last3 + dec;
+  };
+})();
+</script>
