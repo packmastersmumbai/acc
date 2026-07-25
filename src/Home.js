@@ -48,8 +48,10 @@ function rollupContacts(contacts) {
   var attention = Object.keys(byParty).map(function (k) {
       var e = byParty[k];
       var side = partySide_(e.recv, e.pay);
+      // stats is filled by the caller (getHomeDataFresh_) from the overdue set;
+      // rollupContacts alone only knows balances, so gaps refine there.
       return { name: e.name, amount: e.amount, side: side,
-               gap: attentionGap_(side, e.contact_ids.length),
+               gap: attentionGap_(side, e.contact_ids.length, 0, 0),
                contact_id: e.contact_id, contact_ids: e.contact_ids };
     })
     .sort(function (a, b) { return b.amount - a.amount; });
@@ -63,15 +65,22 @@ function partySide_(recv, pay) {
   return recv > 0 ? 'receivable' : 'payable';
 }
 
-/** The human reason a party is on the attention list. */
-function attentionGap_(side, idCount) {
-  var reason = side === 'both' ? 'Owed both ways'
-             : side === 'receivable' ? 'They owe us'
-             : 'We owe them';
-  // Casing duplicates are a real data problem the user should see and fix in
-  // Zoho — the merge hides them from the figure, not from the reason.
-  if (idCount > 1) reason += ' · ' + idCount + ' duplicate records';
-  return reason;
+/**
+ * The reason a party is on the attention list. Direction ("they owe us") is
+ * deliberately NOT stated — it restates the column the figure already sits in
+ * and tells the user nothing. Only facts they cannot see at a glance go here:
+ * how overdue the oldest document is, how many documents are open, and whether
+ * the party is split across duplicate Zoho records.
+ */
+function attentionGap_(side, idCount, oldestDays, docCount) {
+  var bits = [];
+  if (oldestDays > 0) bits.push(oldestDays + 'd overdue');
+  if (docCount > 1) bits.push(docCount + ' open');
+  if (side === 'both') bits.push('owed both ways');
+  // Casing duplicates are a real data problem the user should fix in Zoho —
+  // the merge hides them from the figure, not from the reason.
+  if (idCount > 1) bits.push(idCount + ' duplicate records');
+  return bits.join(' · ');
 }
 
 function getHomeData(force) {
@@ -94,11 +103,20 @@ function getHomeDataFresh_() {
   // overdue — sum balances of overdue invoices, and remember WHICH customers are
   // overdue so the attention list can flag the right rows instead of guessing.
   var overdue = 0, overdueBy = {}; page = 1;
+  var todayMs = new Date().getTime();
   while (true) {
     var ri = zohoGet('invoices', { per_page: 200, page: page, status: 'overdue' });
     (ri.invoices || []).forEach(function (i) {
       overdue += parseFloat(i.balance || 0);
-      if (i.customer_name) overdueBy[normParty(i.customer_name)] = true;
+      if (!i.customer_name) return;
+      var k = normParty(i.customer_name);
+      if (!overdueBy[k]) overdueBy[k] = { days: 0, count: 0 };
+      overdueBy[k].count++;
+      // Age of the OLDEST unpaid document — the number that says how bad it is.
+      if (i.due_date) {
+        var d = Math.floor((todayMs - new Date(i.due_date).getTime()) / 86400000);
+        if (d > overdueBy[k].days) overdueBy[k].days = d;
+      }
     });
     if (!ri.page_context || !ri.page_context.has_more_page) break;
     page++;
@@ -117,9 +135,11 @@ function getHomeDataFresh_() {
   // `gap`/`side` come from the rollup — it is the only place that knows which
   // way the money runs and how many duplicate records were merged.
   var attention = roll.attention.slice(0, 8).map(function (p) {
-    var isOverdue = !!overdueBy[normParty(p.name)];
-    return { name: p.name, gap: p.gap + (isOverdue ? ' · overdue' : ''),
-             side: p.side, amount: p.amount, overdue: isOverdue,
+    var od = overdueBy[normParty(p.name)];
+    return { name: p.name,
+             gap: attentionGap_(p.side, p.contact_ids.length,
+                                od ? od.days : 0, od ? od.count : 0),
+             side: p.side, amount: p.amount, overdue: !!od,
              contact_id: p.contact_id, contact_ids: p.contact_ids };
   });
   return { receivable: roll.recv, payable: roll.pay, overdue: overdue,
