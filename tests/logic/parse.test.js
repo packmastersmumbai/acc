@@ -81,6 +81,56 @@ test('parseBill returns null amount when no figure is labelled', () => {
   expect(ctx.parseBill('HSN 39231010\nPIN 400093').amount).toBe(null);
 });
 
+// Real Amazon/Aerol tax invoice (OCR'd via Drive). A table puts the TOTAL:
+// label on its own line and the figures on the NEXT line, and the document
+// opens with a "Sold By :" label rather than the supplier name.
+const AEROL = [
+  'Sold By : ',
+  'AEROL FORMULATIONS PRIVATE LIMITED  * Rect/Killa Nos. 38//8/2 min, Village - Binola, Tehsil - Manesar Gurgaon, Haryana, 122413 ',
+  'IN ',
+  'PAN No: AAACA0009N ',
+  'GST Registration No: 06AAACA0009N1Z2 ',
+  'Tax Invoice/Bill of Supply/Cash Memo (Original for Recipient) ',
+  'Billing Address : ',
+  'Pack Masters ',
+  'Order Number: 404-9381093-8110713 Invoice Number : DEL5-2627 Order Date: 15.08.2024 ',
+  '\tDescription ',
+  '\t1 ',
+  '\tAerol Combo Silicone Lubricant Spray (300g) | B0BGS3QG28 ',
+  'HSN:34039900',
+  '\t₹521.19 ',
+  '\t1 ',
+  '\t₹521.19 ',
+  '\t18% ',
+  '\tIGST ',
+  '\t₹93.81 ',
+  '\t₹615.00',
+  '\tTOTAL: ',
+  '\t',
+  '',
+  '\t₹93.81 ₹615.00',
+  '\tAmount in Words: ',
+  'Six Hundred Fifteen only',
+].join('\n');
+
+test('parseBill reads a TOTAL: that sits on a later line (table layout)', () => {
+  expect(ctx.parseBill(AEROL).amount).toBe(615);
+});
+
+test('parseBill takes the supplier name, not the "Sold By :" label', () => {
+  expect(ctx.parseBill(AEROL).supplier).toBe('AEROL FORMULATIONS PRIVATE LIMITED');
+});
+
+test('parseBill reads the SELLER gstin, not our own billing-address gstin', () => {
+  const b = ctx.parseBill(AEROL);
+  expect(b.gstin).toBe('06AAACA0009N1Z2');
+  expect(ctx.interStateFrom(b.gstin.slice(0, 2))).toBe(true); // Haryana → IGST
+});
+
+test('parseBill gets the invoice number from an inline "Invoice Number :"', () => {
+  expect(ctx.parseBill(AEROL).invoiceNo).toBe('DEL5-2627');
+});
+
 test('parseBill degrades gracefully on sparse text', () => {
   const b = ctx.parseBill('handwritten note');
   expect(b.gstin).toBe(null);

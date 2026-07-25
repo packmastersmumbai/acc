@@ -88,7 +88,21 @@ function _labelledAmount_(t) {
     var best = null;
     for (var i = 0; i < lines.length; i++) {
       if (!AMOUNT_LABELS[tier].test(lines[i])) continue;
+
+      // Same line first — the common "Grand Total   1,74,378.00" case.
       var n = _amountOnLine_(lines[i]);
+
+      // Table layouts put "TOTAL:" in one cell and its figures in the next row,
+      // so the label line itself holds no number. Look ahead a few lines,
+      // skipping the blank/tab-only cells OCR emits between them.
+      if (n === null) {
+        for (var j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+          if (!lines[j].replace(/[\s\t]/g, '')) continue;   // empty cell
+          n = _amountOnLine_(lines[j]);
+          if (n !== null) break;
+          break;  // first non-empty line had no figure — this label is a dud
+        }
+      }
       // A label can repeat (per-page totals); the largest within one tier wins.
       if (n !== null && (best === null || n > best)) best = n;
     }
@@ -97,14 +111,28 @@ function _labelledAmount_(t) {
   return null;
 }
 
+/**
+ * Header labels that introduce the seller but are NOT the seller's name.
+ * "Sold By :" on its own line used to be returned as the supplier, so the real
+ * name on the following line was never reached.
+ */
+var SUPPLIER_LABEL_RE = /^(sold\s*by|seller|supplier|vendor|from|billed\s*by|sold\s*to|ship(ped)?\s*by)\s*[:\-]?\s*$/i;
+var NOT_SUPPLIER_RE = /^(tax\s+invoice|invoice|bill|gstin|gst\b|pan\b|date|no\.?|amount|total|irn|billing\s*address|shipping\s*address|place\s*of|state\/ut|order\s*number)\b/i;
+
 function _guessSupplier_(t) {
   var lines = t.split(/\r?\n/);
   for (var i = 0; i < lines.length; i++) {
     var ln = lines[i].trim();
     if (!ln) continue;
-    if (/^(tax\s+invoice|invoice|bill|gstin|date|no\.?|amount|total)\b/i.test(ln)) continue;
-    if (/^[\d\W]+$/.test(ln)) continue; // pure numbers/punctuation
-    if (ln.length >= 3) return ln;
+    if (SUPPLIER_LABEL_RE.test(ln)) continue;   // a label — the name follows it
+    if (NOT_SUPPLIER_RE.test(ln)) continue;
+    if (/^[\d\W]+$/.test(ln)) continue;         // pure numbers/punctuation
+    if (ln.length < 3) continue;
+
+    // The name is usually followed by its address on the same OCR line. Cut at
+    // the first address-ish marker so "AEROL FORMULATIONS PRIVATE LIMITED *
+    // Rect/Killa Nos…" yields just the company.
+    return ln.split(/\s+[*|]|,\s|\s{2,}/)[0].trim();
   }
   return '';
 }
