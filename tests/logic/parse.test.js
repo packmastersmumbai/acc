@@ -270,6 +270,64 @@ test('mixed percentages are refused rather than guessed', () => {
   expect(ctx.parseBill('Total 1,000.00\nfoo 9%\nbar 6%')).toHaveProperty('gstPct', null);
 });
 
+// Shubh Propack invoice (clean digital screenshot). Two traps this bill adds:
+// OUR gstin appears TWICE (Bill To + Ship To), and a "Sub Total" sits below the
+// real "Total" — taking the wrong one under-posts the bill by the tax amount.
+const SHUBH = [
+  'SHUBH PROPACK PRIVATE LIMITED',
+  'Above SBI Bank, Shilaj Ahmedabad, Gujarat-380059,India',
+  'GSTIN : 24ABECS3222L1ZF',
+  'Phone : 9638949869 PAN:ABECS3222L IEC:ABECS3222L',
+  'TAX INVOICE',
+  'Invoice# INV-2627/0298',
+  'Invoice Date',
+  ': 06/07/2026',
+  'Place Of Supply',
+  ': Maharashtra (27)',
+  'Bill To',
+  'Ship To',
+  'PACK MASTERS',
+  'Mumbai- 400701',
+  'GSTIN : 27AFGPM0888K1ZY',
+  'Phone : 9167155573',
+  'GSTIN : 27AFGPM0888K1ZY',
+  'Phone : 9167155573',
+  '1  28mm Black Trigger Pumps',
+  'TS0028B03',
+  '96161020',
+  '7,500.00',
+  '7.50',
+  '10,125.00',
+  '56,250.00',
+  'Total In Words',
+  'Indian Rupee Sixty-Six Thousand Three Hundred Seventy-Five Only',
+  'Sub Total',
+  '56,250.00',
+  'IGST18 (18%)',
+  '10,125.00',
+  'Total',
+  '66,375.00',
+].join('\n');
+
+test('Shubh: seller gstin wins over OUR gstin appearing twice', () => {
+  expect(ctx.parseBill(SHUBH).gstin).toBe('24ABECS3222L1ZF');
+});
+
+test('Shubh: Total beats Sub Total (under-posting is the costly error)', () => {
+  expect(ctx.parseBill(SHUBH).amount).toBe(66375);
+});
+
+test('Shubh: supplier, invoice number and IGST rate', () => {
+  const b = ctx.parseBill(SHUBH);
+  expect(b.supplier).toBe('SHUBH PROPACK PRIVATE LIMITED');
+  expect(b.invoiceNo).toBe('INV-2627/0298');
+  expect(b.gstPct).toBe(18);
+});
+
+test('Shubh: Gujarat seller to Maharashtra buyer is inter-state (IGST)', () => {
+  expect(ctx.interStateFrom(ctx.parseBill(SHUBH).gstin.slice(0, 2))).toBe(true);
+});
+
 test('parseBill degrades gracefully on sparse text', () => {
   const b = ctx.parseBill('handwritten note');
   expect(b.gstin).toBe(null);
