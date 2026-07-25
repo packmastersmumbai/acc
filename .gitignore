@@ -1,0 +1,26 @@
+# ── This repo tracks the mobile ACCOUNTS APP only ──
+# The directory it lives in is the pre-existing accounts workspace (Zoho python
+# scripts + data dumps). Ignore all of that; track only src/, tests/, and config.
+
+# Everything at root by default...
+/*
+# ...then re-include the app files and dirs:
+!/.gitignore
+!/package.json
+!/package-lock.json
+!/playwright.config.js
+!/src/
+!/tests/
+!/docs/
+!/.github/
+!/.nojekyll
+
+# within re-included dirs, still drop these:
+node_modules/
+.clasp.json
+test-report/
+test-results/
+.playwright-cli/
+playwright/.cache/
+.env
+*.token
