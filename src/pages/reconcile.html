@@ -77,6 +77,20 @@
     note.textContent = msg;
   }
   var page = 0;      // 0-based page of 200
+  var accounts = []; // full expense chart, for the per-row Book picker
+
+  function acctOptions() {
+    return accounts.map(function (a) {
+      return '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>';
+    }).join('');
+  }
+
+  function loadAccounts(then) {
+    google.script.run
+      .withSuccessHandler(function (a) { accounts = a || []; then(); })
+      .withFailureHandler(function () { accounts = []; then(); })
+      .getAllExpenseAccounts();
+  }
 
   function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
 
@@ -115,16 +129,55 @@
           '</div>' +
           '<div class="rc-narr text-xs text-[#71717a] mt-0.5">' + esc(t.narration) + '</div>' +
         '</div>' +
+        '<select class="rc-acct mono text-xs border border-[#e7e5e4] rounded px-1 py-1" data-act="acct">' +
+          acctOptions() + '</select>' +
         '<button class="tile tile-skip" data-act="skip">Skip</button>' +
-        '<button class="tile tile-accept" data-act="accept" ' + acceptDis + '>Accept</button>' +
+        '<button class="tile tile-accept" data-act="book">Book</button>' +
+        '<button class="tile tile-accept" data-act="accept" ' + acceptDis + '>Match</button>' +
       '</div>';
     }).join('');
 
     // per-row tile handlers
     Array.prototype.forEach.call(host.querySelectorAll('.rc-row'), function (rowEl) {
       var id = rowEl.getAttribute('data-id');
+      // Skip is local only — it greys the row for this sitting and does NOT
+      // touch Zoho; the row returns on the next load.
       rowEl.querySelector('[data-act="skip"]').addEventListener('click', function () {
         reviewed[id] = true; rowEl.classList.add('done'); renderProgress();
+      });
+
+      // Book as expense — the path that actually clears these rows. Most have
+      // no invoice/bill to match against (card charges, gateway fees, statutory
+      // payments), so Match alone would leave them stuck.
+      var bookBtn = rowEl.querySelector('[data-act="book"]');
+      bookBtn.addEventListener('click', function () {
+        var txn = rows.filter(function (r) { return r.transactionId === id; })[0];
+        if (!txn) return;
+        var sel = rowEl.querySelector('[data-act="acct"]');
+        if (!sel || !sel.value) { setRowNote(rowEl, 'No expense account available'); return; }
+        var acctName = sel.options[sel.selectedIndex].text;
+
+        if (!window.confirm('Book as expense?\n\n' + inr(txn.amount) + ' · ' + txn.date +
+                            '\n' + (txn.narration || '') + '\n\nAccount: ' + acctName)) return;
+
+        bookBtn.disabled = true; bookBtn.textContent = '…';
+        google.script.run
+          .withSuccessHandler(function () {
+            reviewed[id] = true; rowEl.classList.add('done');
+            bookBtn.textContent = 'Booked'; renderProgress();
+          })
+          .withFailureHandler(function (e) {
+            bookBtn.disabled = false; bookBtn.textContent = 'Book';
+            setRowNote(rowEl, (e && e.message) ? e.message : 'Could not book');
+          })
+          .categorizeAsExpense(id, {
+            accountId: sel.value,
+            bankAccountId: AXIS,
+            date: txn.date,
+            amount: Math.abs(txn.amount),
+            description: txn.narration || '',
+            referenceNumber: ''
+          });
       });
       var acc = rowEl.querySelector('[data-act="accept"]');
       acc.addEventListener('click', function () {
@@ -191,10 +244,14 @@
 
   function load() {
     AppStates.loading('#rowHost', 'Loading transactions…');
-    google.script.run
-      .withSuccessHandler(function (list) { all = list || []; page = 0; reviewed = {}; renderRows(); })
-      .withFailureHandler(function () { AppStates.error('#rowHost', 'Could not load transactions', load); })
-      .uncategorized(AXIS);
+    // accounts first: rows render a per-row picker, which would be empty if the
+    // chart arrived after them
+    loadAccounts(function () {
+      google.script.run
+        .withSuccessHandler(function (list) { all = list || []; page = 0; reviewed = {}; renderRows(); })
+        .withFailureHandler(function () { AppStates.error('#rowHost', 'Could not load transactions', load); })
+        .uncategorized(AXIS);
+    });
   }
 
   document.addEventListener('DOMContentLoaded', load);

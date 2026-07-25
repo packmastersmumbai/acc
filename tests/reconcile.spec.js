@@ -1,16 +1,17 @@
 const { test } = require('./helpers/fixture');
 const { expect } = require('@playwright/test');
 
-// Task 11 — reconcile as a ROW LIST (200/page), each row with Skip/Accept tiles.
-// MOCK_UNCAT = 2 txns. Accept is feature-flagged OFF.
+// Reconcile as a ROW LIST (200/page). Each row offers three actions:
+// Skip (local only), Book (categorize as expense — clears the row in Zoho), and
+// Match (against an invoice/bill, when Zoho finds a candidate). MOCK_UNCAT = 2.
 
-test('renders transactions as rows with Skip/Accept tiles', async ({ page, loadPage }) => {
+test('renders transactions as rows with Skip/Book/Match tiles', async ({ page, loadPage }) => {
   await loadPage('reconcile');
   const rows = page.locator('.rc-row');
   await expect(rows).toHaveCount(2);
   await expect(page.locator('#rowHost')).toContainText('NEFT YASH POLY PLAST');
-  // each row has both tiles
   await expect(rows.first().locator('[data-act="skip"]')).toBeVisible();
+  await expect(rows.first().locator('[data-act="book"]')).toBeVisible();
   await expect(rows.first().locator('[data-act="accept"]')).toBeVisible();
   await expect(page.locator('#progressLabel')).toHaveText('0 of 2 reviewed');
 });
@@ -103,4 +104,64 @@ test('pager appears and pages by 200 when over a page of rows', async ({ page, l
   await page.locator('#nextBtn').click();
   await expect(page.locator('.rc-row')).toHaveCount(50);          // page 2 shows remaining 50
   await expect(page.locator('#pagerLabel')).toHaveText('Page 2 / 2');
+});
+
+test('Book posts the chosen expense account for that row', async ({ page, loadPage }) => {
+  await loadPage('reconcile');
+  await page.evaluate(() => {
+    window.__gasOverride('categorizeAsExpense', (id, obj) => {
+      window.__booked = { id, obj }; return { success: true };
+    });
+  });
+
+  const row = page.locator('.rc-row').first();
+  await row.locator('[data-act="acct"]').selectOption('1161923000000000409'); // Bank Fees
+  page.once('dialog', (d) => d.accept());
+  await row.locator('[data-act="book"]').click();
+
+  await expect.poll(() => page.evaluate(() => window.__booked)).toBeTruthy();
+  const sent = await page.evaluate(() => window.__booked);
+  expect(sent.obj.accountId).toBe('1161923000000000409');
+  expect(sent.obj.bankAccountId).toBe('1161923000000540009'); // Axis
+  expect(sent.obj.amount).toBe(174378);
+  expect(sent.obj.date).toBe('2026-04-14');
+  await expect(row).toHaveClass(/done/);
+});
+
+test('the row picker offers the full expense chart, not just the bill shortlist', async ({ page, loadPage }) => {
+  await loadPage('reconcile');
+  const opts = page.locator('.rc-row').first().locator('[data-act="acct"] option');
+  await expect(opts).toHaveCount(3);
+  await expect(opts.nth(1)).toHaveText('Bank Fees and Charges');
+});
+
+test('cancelling the book confirm writes nothing', async ({ page, loadPage }) => {
+  await loadPage('reconcile');
+  await page.evaluate(() => {
+    window.__booked = null;
+    window.__gasOverride('categorizeAsExpense', (id, obj) => { window.__booked = { id, obj }; return { success: true }; });
+  });
+
+  const row = page.locator('.rc-row').first();
+  page.once('dialog', (d) => d.dismiss());
+  await row.locator('[data-act="book"]').click();
+
+  expect(await page.evaluate(() => window.__booked)).toBe(null);
+  await expect(row).not.toHaveClass(/done/);
+});
+
+test('a stale row surfaces the refusal instead of appearing booked', async ({ page, loadPage }) => {
+  await loadPage('reconcile');
+  await page.evaluate(() => {
+    window.__gasOverride('categorizeAsExpense', () => {
+      throw new Error('Already categorized in Zoho — refresh before booking');
+    });
+  });
+
+  const row = page.locator('.rc-row').first();
+  page.once('dialog', (d) => d.accept());
+  await row.locator('[data-act="book"]').click();
+
+  await expect(row.locator('.rc-note')).toContainText('Already categorized');
+  await expect(row).not.toHaveClass(/done/);
 });

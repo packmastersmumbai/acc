@@ -30,6 +30,7 @@ function postBillBody(obj) {
   vm.createContext(c);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../src/Bills.js'), 'utf8'), c);
   c.zohoPost = (path_, body) => { c.captured = { path: path_, body: body }; return { bill: { bill_id: 'B1' } }; };
+  c.cacheBustAll = () => {};   // lives in ZohoClient.js, not loaded here
   vm.runInContext('postBill(' + JSON.stringify(obj) + ')', c);
   return c.captured.body;
 }

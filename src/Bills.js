@@ -51,6 +51,40 @@ var DEFAULT_EXPENSE_ACCOUNT_ID = '1161923000000034003'; // Cost of Goods Sold
 /** Accounts the scan screen offers, default first. */
 function getExpenseAccounts() { return EXPENSE_ACCOUNTS; }
 
+/**
+ * The FULL expense chart, for reconcile — bank rows are card charges, gateway
+ * fees, statutory payments and the like, so the short bill list is too narrow.
+ * Live from Zoho (cached) so accounts added there appear without a code change.
+ * Falls back to the short list if the chart cannot be read.
+ */
+function getAllExpenseAccounts() {
+  return cachedRead('expense_accounts', 3600, function () {
+    try {
+      // No filter_by: AccountType.* returns HTTP 400 on this org (verified), and
+      // the whole chart is 70 rows on one page, so filter client-side instead.
+      var TYPES = { expense: 1, cost_of_goods_sold: 1, other_expense: 1 };
+      var r = zohoGet('chartofaccounts', { per_page: 200 });
+      var out = [];
+      (r.chartofaccounts || []).forEach(function (a) {
+        if (!TYPES[a.account_type]) return;
+        if (a.is_active === false) return;
+        out.push({ id: a.account_id, name: a.account_name });
+      });
+      if (!out.length) return EXPENSE_ACCOUNTS;
+      // default (COGS) first, then alphabetical
+      out.sort(function (a, b) {
+        if (a.id === DEFAULT_EXPENSE_ACCOUNT_ID) return -1;
+        if (b.id === DEFAULT_EXPENSE_ACCOUNT_ID) return 1;
+        return a.name.localeCompare(b.name);
+      });
+      return out;
+    } catch (e) {
+      console.error('getAllExpenseAccounts fell back: ' + e);
+      return EXPENSE_ACCOUNTS;
+    }
+  });
+}
+
 function postBill(obj) {
   var line = {
     account_id: obj.expenseAccountId || DEFAULT_EXPENSE_ACCOUNT_ID,

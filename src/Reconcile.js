@@ -58,6 +58,46 @@ function suggestMatch(txn) {
 }
 
 /**
+ * Book an uncategorized txn as an expense — the path that actually CLEARS the
+ * backlog. Zoho finds no match for most of these rows (they are card charges,
+ * gateway fees, statutory payments — not settlements of any invoice or bill),
+ * so matching alone would leave them stuck.
+ *
+ * Endpoint + body per Zoho's OpenAPI spec (categorize-as-expense-request).
+ * paid_through_account_id is the BANK account the money left; account_id is the
+ * expense head it is booked to.
+ *
+ * @param {string} transactionId
+ * @param {{accountId:string, bankAccountId:string, date:string, amount:number,
+ *          description:string, referenceNumber:string}} obj
+ */
+function categorizeAsExpense(transactionId, obj) {
+  if (!transactionId) throw new Error('categorizeAsExpense: transactionId required');
+  if (!obj || !obj.accountId) throw new Error('categorizeAsExpense: an expense account is required');
+  if (!obj.bankAccountId) throw new Error('categorizeAsExpense: bankAccountId required');
+
+  // Same staleness guard as acceptMatch: the row list may be stale, and
+  // re-booking an already-categorized txn would double-count the expense.
+  var current = zohoGet('banktransactions/' + transactionId).banktransaction;
+  var status = current && (current.status || current.transaction_status);
+  if (status && status !== 'uncategorized') {
+    throw new Error('Already ' + status + ' in Zoho — refresh before booking');
+  }
+
+  var body = {
+    account_id: obj.accountId,
+    paid_through_account_id: obj.bankAccountId,
+    date: obj.date,
+    amount: obj.amount,
+    reference_number: String(obj.referenceNumber || '').slice(0, 100),
+    description: String(obj.description || '').slice(0, 500)
+  };
+  zohoPost('banktransactions/uncategorized/' + transactionId + '/categorize/expenses', body);
+  cacheBustAll();
+  return { success: true, transactionId: transactionId };
+}
+
+/**
  * Accept a match — categorizes an uncategorized bank txn against a document.
  * This is a WRITE.
  *

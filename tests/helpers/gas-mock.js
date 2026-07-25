@@ -103,6 +103,11 @@ const GAS_MOCK_SCRIPT = `
       acceptMatch:         function(txnId, m)    { dispatch('acceptMatch', [txnId, m], { success: true }); },
       attachToInvoice:     function(id, b64, n, mime) { dispatch('attachToInvoice', [id, b64, n, mime], { success: true, documentId: '116000000055555' }); },
       archiveScan:         function(b64, mime, sup) { dispatch('archiveScan', [b64, mime, sup], { fileId: '1ArCh1V3', url: 'https://drive.google.com/file/d/1ArCh1V3/view' }); },
+      getAllExpenseAccounts: function()          { dispatch('getAllExpenseAccounts', [], [
+                             { id: '1161923000000034003', name: 'Cost of Goods Sold' },
+                             { id: '1161923000000000409', name: 'Bank Fees and Charges' },
+                             { id: '1161923000000000427', name: 'IT and Internet Expenses' }]); },
+      categorizeAsExpense: function(txnId, obj)  { dispatch('categorizeAsExpense', [txnId, obj], { success: true, transactionId: txnId }); },
       getExpenseAccounts:  function()            { dispatch('getExpenseAccounts', [], [
                              { id: '1161923000000034003', name: 'Cost of Goods Sold' },
                              { id: '1161923000000000460', name: 'Other Expenses' }]); },
