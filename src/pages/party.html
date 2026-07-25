@@ -1,0 +1,137 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>New supplier</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Material+Symbols+Outlined&display=swap" rel="stylesheet"/>
+<style>
+  body { font-family:'Hanken Grotesk',sans-serif; background:#fafaf9; color:#18181b; }
+  .mono { font-family:'JetBrains Mono',monospace; }
+  .hairline-b { border-bottom:1px solid #e7e5e4; }
+  .from-doc { border-left:2px solid #047857; padding-left:8px; }
+  .from-doc .tag { font-size:10px; letter-spacing:0.1em; color:#71717a; text-transform:uppercase; }
+  .fld { width:100%; background:#fff; border:1px solid #e7e5e4; border-radius:4px; padding:8px 12px; }
+  .fld:focus { outline:none; border-color:#047857; box-shadow:0 0 0 1px #047857; }
+  .btn-primary { background:#047857; color:#fff; border-radius:4px; }
+  .lbl { font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:#71717a; }
+</style>
+</head>
+<body class="min-h-screen pb-28">
+<header class="flex items-center justify-between px-4 h-16 hairline-b bg-[#fafaf9] sticky top-0 z-10">
+  <button class="p-2 -ml-2" onclick="history.back()"><span class="material-symbols-outlined">chevron_left</span></button>
+  <div class="mono text-sm uppercase tracking-wider font-bold">New supplier</div>
+  <div class="w-10"></div>
+</header>
+
+<main class="max-w-3xl mx-auto flex flex-col gap-4 pt-4">
+  <section class="px-4">
+    <h2 class="lbl mb-2 tracking-widest">Identity</h2>
+    <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-1">
+        <label class="lbl">Display name</label>
+        <div id="nameFromDoc" class="from-doc hidden">
+          <div id="nameVal" class="mono text-sm"></div><div class="tag">from document</div>
+        </div>
+        <input id="nameInput" class="fld mono text-sm hidden" placeholder="Enter supplier name" type="text"/>
+      </div>
+    </div>
+  </section>
+
+  <div class="hairline-b mx-4"></div>
+
+  <section class="px-4">
+    <h2 class="lbl mb-2 tracking-widest">Tax</h2>
+    <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-1">
+        <label class="lbl">GSTIN</label>
+        <div id="gstinFromDoc" class="from-doc hidden">
+          <div id="gstinVal" class="mono text-sm"></div><div class="tag">from document</div>
+        </div>
+        <input id="gstinInput" class="fld mono text-sm hidden" placeholder="15-char GSTIN" type="text"/>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div class="flex flex-col gap-1">
+          <label class="lbl">PAN</label>
+          <div id="panVal" class="mono text-sm py-2">—</div>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="lbl">Place of supply</label>
+          <div id="pocVal" class="mono text-sm py-2">—</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="hairline-b mx-4"></div>
+
+  <section class="px-4">
+    <h2 class="lbl mb-2 tracking-widest">Contact (optional)</h2>
+    <div class="grid grid-cols-2 gap-4">
+      <div class="flex flex-col gap-1"><label class="lbl">Phone</label><input id="phoneInput" class="fld mono text-sm" type="tel"/></div>
+      <div class="flex flex-col gap-1"><label class="lbl">Email</label><input id="emailInput" class="fld mono text-sm" type="email"/></div>
+    </div>
+  </section>
+
+  <div id="statusHost" class="px-4"></div>
+</main>
+
+<div class="fixed bottom-0 w-full px-4 py-4 bg-[#fafaf9]/95 border-t border-[#e7e5e4]">
+  <button id="saveBtn" class="w-full btn-primary py-3 mono text-sm uppercase tracking-wide">Save supplier</button>
+</div>
+
+<?!= include('pages/shared/states') ?>
+<script>
+(function () {
+  function qp(name) {
+    var search = window.__search || window.location.search;
+    var m = new RegExp('[?&]' + name + '=([^&]*)').exec(search);
+    return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : '';
+  }
+  function show(id, on) { document.getElementById(id).classList.toggle('hidden', !on); }
+
+  var GST_STATE = {'27':'MH','06':'HR','24':'GJ','29':'KA','09':'UP','07':'DL','33':'TN','36':'TS'};
+
+  var name = qp('name'), gstin = qp('gstin').toUpperCase();
+
+  // Prefill: show "from document" block when we got a value, else an input.
+  if (name) { document.getElementById('nameVal').textContent = name; show('nameFromDoc', true); }
+  else { show('nameInput', true); }
+
+  if (gstin) {
+    document.getElementById('gstinVal').textContent = gstin; show('gstinFromDoc', true);
+    document.getElementById('panVal').textContent = gstin.slice(2, 12);
+    document.getElementById('pocVal').textContent = GST_STATE[gstin.slice(0, 2)] || gstin.slice(0, 2);
+  } else { show('gstinInput', true); }
+
+  function currentName() {
+    return name || document.getElementById('nameInput').value.trim();
+  }
+  function currentGstin() {
+    return gstin || document.getElementById('gstinInput').value.trim().toUpperCase();
+  }
+
+  document.getElementById('saveBtn').addEventListener('click', function () {
+    var nm = currentName();
+    if (!nm) { AppStates.error('#statusHost', 'A supplier name is required', null); return; }
+    AppStates.loading('#statusHost', 'Saving supplier…');
+    var obj = {
+      name: nm, gstin: currentGstin(), contactType: 'vendor',
+      phone: document.getElementById('phoneInput').value.trim(),
+      email: document.getElementById('emailInput').value.trim()
+    };
+    google.script.run
+      .withSuccessHandler(function (res) {
+        AppStates.empty('#statusHost', 'Saved', nm + ' created in Zoho.');
+        window.__lastCreate = res; // for tests
+      })
+      .withFailureHandler(function () { AppStates.error('#statusHost', 'Could not save supplier', null); })
+      .createContact(obj);
+  });
+
+  window.__partyBody = function () { // expose builder for tests
+    return { name: currentName(), gstin: currentGstin(), contactType: 'vendor',
+             phone: document.getElementById('phoneInput').value.trim(),
+             email: document.getElementById('emailInput').value.trim() };
+  };
+})();
+</script>
+</body></html>

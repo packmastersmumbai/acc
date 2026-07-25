@@ -9,7 +9,8 @@ const ROOT = path.join(__dirname, '../../src/pages');
  * Load an HTML page, strip GAS template expressions, inject mock google.script.run,
  * and serve it as a data URL in the browser.
  */
-async function loadPage(page, pageName) {
+async function loadPage(page, pageName, opts) {
+  opts = opts || {};
   const filePath = path.join(ROOT, pageName + '.html');
   let html = fs.readFileSync(filePath, 'utf8');
 
@@ -28,7 +29,12 @@ async function loadPage(page, pageName) {
 
   // Inject mock before any other scripts. Prefer <head>; fall back to <html>
   // or bare-fragment pages (no head/html wrapper) so partial screens work too.
-  const mockTag = `<script>${GAS_MOCK_SCRIPT}</script>`;
+  // opts.query (e.g. "name=Foo&gstin=27AABFY...") shims window.location.search
+  // since data-URL pages carry no real query string.
+  const queryShim = opts.query
+    ? `<script>(function(){try{Object.defineProperty(window.location,'search',{configurable:true,value:'?${opts.query}'});}catch(e){window.__search='?${opts.query}';}})();</script>`
+    : '';
+  const mockTag = `<script>${GAS_MOCK_SCRIPT}</script>` + queryShim;
   if (html.includes('<head>')) {
     html = html.replace('<head>', '<head>' + mockTag);
   } else if (html.includes('<html')) {
@@ -45,7 +51,7 @@ async function loadPage(page, pageName) {
 
 const test = base.extend({
   loadPage: async ({ page }, use) => {
-    await use((pageName) => loadPage(page, pageName));
+    await use((pageName, opts) => loadPage(page, pageName, opts));
   },
 });
 
