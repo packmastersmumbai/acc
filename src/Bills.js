@@ -29,9 +29,31 @@ function TAX_ID(pct, inter) {
  * obj: {vendorId, billNumber, date, description, amount, gstPct, inter,
  *       expenseAccountId}. reference_number/bill_number capped at 45 chars.
  */
+/**
+ * Expense accounts offered when posting a scanned bill, default first.
+ *
+ * Cost of Goods Sold is the default because it is what this org actually uses:
+ * across the 142 most recent bills, 268 line items hit COGS vs 6 everything
+ * else (Other Expenses 5, Travel 1) — 97.8%. The rest of the chart exists but
+ * is effectively unused for bills, so it is not offered here; a bill needing
+ * one of those is rare enough to belong in Zoho directly.
+ */
+var EXPENSE_ACCOUNTS = [
+  { id: '1161923000000034003', name: 'Cost of Goods Sold' },
+  { id: '1161923000000000460', name: 'Other Expenses' },
+  { id: '1161923000000000418', name: 'Travel Expense' },
+  { id: '1161923000000000457', name: 'Repairs and Maintenance' },
+  { id: '1161923000000000400', name: 'Office Supplies' }
+];
+
+var DEFAULT_EXPENSE_ACCOUNT_ID = '1161923000000034003'; // Cost of Goods Sold
+
+/** Accounts the scan screen offers, default first. */
+function getExpenseAccounts() { return EXPENSE_ACCOUNTS; }
+
 function postBill(obj) {
   var line = {
-    account_id: obj.expenseAccountId,
+    account_id: obj.expenseAccountId || DEFAULT_EXPENSE_ACCOUNT_ID,
     name: (obj.description || 'Goods').slice(0, 100),
     rate: obj.amount,
     quantity: 1,
@@ -52,5 +74,7 @@ function postBill(obj) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { TAX_ID: TAX_ID, TAX_IDS: TAX_IDS };
+  module.exports = { TAX_ID: TAX_ID, TAX_IDS: TAX_IDS,
+                     EXPENSE_ACCOUNTS: EXPENSE_ACCOUNTS,
+                     DEFAULT_EXPENSE_ACCOUNT_ID: DEFAULT_EXPENSE_ACCOUNT_ID };
 }

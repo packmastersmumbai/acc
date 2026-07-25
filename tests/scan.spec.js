@@ -157,7 +157,35 @@ test('no document row when archiving failed', async ({ page, loadPage }) => {
   await expect(page.locator('#rDocRow')).toBeHidden();
 });
 
-test('post is refused until an expense account is known', async ({ page, loadPage }) => {
+test('expense account defaults to Cost of Goods Sold and is changeable', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await driveScan(page);
+
+  // default first — 97.8% of this org's real bill lines hit COGS
+  await expect(page.locator('#rAccount')).toHaveValue('1161923000000034003');
+  await expect(page.locator('#rAccount option').first()).toHaveText('Cost of Goods Sold');
+});
+
+test('posting sends the chosen account and the archived scan url', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await page.evaluate(() => {
+    window.__gasOverride('postBill', (obj) => { window.__billed = obj; return { success: true, bill_id: 'B1' }; });
+  });
+  await driveScan(page);
+  await page.locator('#rAccount').selectOption('1161923000000000460'); // override the default
+
+  page.once('dialog', (d) => d.accept());
+  await page.locator('#postBtn').click();
+
+  await expect.poll(() => page.evaluate(() => window.__billed)).toBeTruthy();
+  const sent = await page.evaluate(() => window.__billed);
+  expect(sent.expenseAccountId).toBe('1161923000000000460');
+  expect(sent.vendorId).toBe('116000000071027'); // the GSTIN-matched supplier
+  expect(sent.scanUrl).toBe('https://drive.google.com/file/d/1ArCh1V3/view');
+  await expect(page.locator('#statusHost')).toContainText('Bill posted');
+});
+
+test('cancelling the confirm writes nothing to Zoho', async ({ page, loadPage }) => {
   await loadPage('scan');
   await page.evaluate(() => {
     window.__posted = false;
@@ -165,8 +193,24 @@ test('post is refused until an expense account is known', async ({ page, loadPag
   });
   await driveScan(page);
 
+  page.once('dialog', (d) => d.dismiss());
   await page.locator('#postBtn').click();
 
-  await expect(page.locator('#statusHost')).toContainText('no expense account');
-  expect(await page.evaluate(() => window.__posted)).toBe(false); // no write to Zoho
+  expect(await page.evaluate(() => window.__posted)).toBe(false);
+});
+
+test('posting is refused without a matched supplier', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await page.evaluate(() => {
+    window.__posted = false;
+    window.__gasOverride('postBill', () => { window.__posted = true; return { success: true }; });
+    window.__gasOverride('parseBill', () =>
+      ({ supplier: 'Unknown Co', gstin: '99ZZZZZ0000Z1Z9', invoiceNo: 'X1', amount: 100, gstPct: 18 }));
+  });
+  await driveScan(page);
+
+  await page.locator('#postBtn').click();
+
+  await expect(page.locator('#statusHost')).toContainText('supplier');
+  expect(await page.evaluate(() => window.__posted)).toBe(false);
 });

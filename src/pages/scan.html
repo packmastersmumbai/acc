@@ -45,6 +45,10 @@
       <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">GSTIN</span><span id="rGstin" class="mono text-sm"></span></div>
       <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">Invoice</span><span id="rInvoice" class="mono text-sm"></span></div>
       <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">Amount</span><span id="rAmount" class="mono text-base"></span></div>
+      <div class="flex justify-between items-center py-3 hairline-b">
+        <span class="mono text-xs text-[#71717a] uppercase">Expense account</span>
+        <select id="rAccount" class="mono text-sm bg-transparent text-right border-b border-[#e7e5e4] py-1"></select>
+      </div>
       <div id="rDocRow" class="hidden flex justify-between items-center py-3 hairline-b">
         <span class="mono text-xs text-[#71717a] uppercase">Document</span>
         <a id="rDocLink" target="_blank" rel="noopener"
@@ -96,6 +100,21 @@
   var parsed = null, matched = null, archivedUrl = null;
 
   function show(id, on) { document.getElementById(id).classList.toggle('hidden', !on); }
+
+  // Expense accounts come from the server (default first) so the posting
+  // account is visible and changeable BEFORE the bill is written to Zoho.
+  function loadAccounts() {
+    google.script.run
+      .withSuccessHandler(function (accts) {
+        var sel = document.getElementById('rAccount');
+        sel.innerHTML = (accts || []).map(function (a) {
+          return '<option value="' + a.id + '">' + a.name + '</option>';
+        }).join('');
+      })
+      .withFailureHandler(function () { /* postBill falls back to the default */ })
+      .getExpenseAccounts();
+  }
+  loadAccounts();
 
   function renderParsed(p) {
     document.getElementById('rSupplier').textContent = p.supplier || '—';
@@ -173,17 +192,14 @@
       AppStates.error('#statusHost', 'Create or match a supplier before posting', null);
       return;
     }
-    // postBill needs an expense account for its line item, and parseBill cannot
-    // infer one from a bill image — which ledger account to charge is a
-    // bookkeeping decision. Until an account picker exists, refuse rather than
-    // post a miscoded bill to Zoho.
-    if (!parsed.expenseAccountId) {
-      AppStates.error('#statusHost',
-        'Cannot post yet — no expense account chosen for this bill', null);
-      return;
-    }
-    // This WRITES to Zoho — confirm explicitly rather than posting on one tap.
-    if (!window.confirm('Post this bill to Zoho for ' + matched.contact_name + '?')) return;
+    var sel = document.getElementById('rAccount');
+    var acctId = sel.value;
+    var acctName = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
+
+    // This WRITES to Zoho — confirm explicitly, naming the account being
+    // charged, since a miscoded bill is invisible until reconciliation.
+    if (!window.confirm('Post this bill to Zoho?\n\nSupplier: ' + matched.contact_name +
+                        '\nAccount: ' + acctName)) return;
 
     var btn = this;
     btn.disabled = true;
@@ -207,7 +223,7 @@
         gstPct: parsed.gstPct,
         inter: !!parsed.inter,
         description: parsed.description || 'Goods',
-        expenseAccountId: parsed.expenseAccountId,
+        expenseAccountId: acctId,
         scanUrl: archivedUrl          // links the Zoho bill back to the Drive file
       });
   });

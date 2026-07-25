@@ -98,6 +98,9 @@ const GAS_MOCK_SCRIPT = `
       acceptMatch:         function(txnId, m)    { dispatch('acceptMatch', [txnId, m], { success: true }); },
       attachToInvoice:     function(id, b64, n, mime) { dispatch('attachToInvoice', [id, b64, n, mime], { success: true, documentId: '116000000055555' }); },
       archiveScan:         function(b64, mime, sup) { dispatch('archiveScan', [b64, mime, sup], { fileId: '1ArCh1V3', url: 'https://drive.google.com/file/d/1ArCh1V3/view' }); },
+      getExpenseAccounts:  function()            { dispatch('getExpenseAccounts', [], [
+                             { id: '1161923000000034003', name: 'Cost of Goods Sold' },
+                             { id: '1161923000000000460', name: 'Other Expenses' }]); },
       fileDocument:        function(b64, n, mime, folder) { dispatch('fileDocument', [b64, n, mime, folder], { fileId: 'drive-file-123', url: 'https://drive.google.com/file/d/drive-file-123' }); },
       backupNow:           function()            { dispatch('backupNow', [], { records: 5856, driveFileId: 'backup-2026-07-25' }); },
       getPartyLedger:      function(id)          { dispatch('getPartyLedger', [id], MOCK_LEDGER); }

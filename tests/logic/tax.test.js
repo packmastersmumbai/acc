@@ -46,3 +46,14 @@ test('postBill omits notes when there is no archived scan', () => {
   const body = postBillBody(BASE);
   expect(body.notes).toBeUndefined();
 });
+
+test('postBill falls back to Cost of Goods Sold when no account is given', () => {
+  const { expenseAccountId, ...noAcct } = BASE;
+  const body = postBillBody(noAcct);
+  expect(body.line_items[0].account_id).toBe('1161923000000034003');
+});
+
+test('postBill uses the chosen account when one is given', () => {
+  const body = postBillBody({ ...BASE, expenseAccountId: '1161923000000000460' });
+  expect(body.line_items[0].account_id).toBe('1161923000000000460');
+});
