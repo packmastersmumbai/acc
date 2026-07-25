@@ -1,0 +1,75 @@
+/**
+ * Pure text parsers for OCR'd bills. No GAS globals — loadable in a vm/test shim.
+ *
+ * GSTIN format: 2-digit state code + 10-char PAN + 1 entity digit + 'Z' + 1 check.
+ *   e.g. 27AABFY9773F1ZN  →  state 27, PAN AABFY9773F.
+ */
+
+/** @return {{gstin:string, pan:string, stateCode:string}|null} */
+function parseGstin(text) {
+  if (!text) return null;
+  var m = String(text).toUpperCase().match(/\b(\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d])\b/);
+  if (!m) return null;
+  var gstin = m[1];
+  return { gstin: gstin, stateCode: gstin.slice(0, 2), pan: gstin.slice(2, 12) };
+}
+
+/**
+ * Best-effort bill field extraction from OCR text.
+ * @return {{supplier:string, gstin:string|null, invoiceNo:string|null,
+ *           amount:number|null, gstPct:number|null}}
+ */
+function parseBill(text) {
+  var t = String(text || '');
+  var g = parseGstin(t);
+
+  // Invoice number: "Invoice/Bill No[.:] <token>" on the SAME line (no newline
+  // crossing, so "TAX INVOICE\nGSTIN…" can't capture the GSTIN line). The
+  // "no/number/#" keyword is required to avoid matching a bare "INVOICE" header.
+  var invM = t.match(/(?:invoice|bill|inv)[ \t]*(?:no\.?|number|#)[ \t]*[:\-]?[ \t]*([A-Z0-9][A-Z0-9\/\-]{2,})/i);
+  var invoiceNo = invM ? invM[1].trim() : null;
+
+  // Amount: largest rupee-looking figure (Indian grouping or plain), prefer lines
+  // mentioning total/grand/amount.
+  var amount = _largestAmount_(t);
+
+  // GST %: an explicit 5/12/18/28 near "GST"/"tax"/"%".
+  var gstM = t.match(/\b(0|5|12|18|28)\s*%/) || t.match(/(?:gst|igst|cgst|sgst)[^0-9]{0,8}(0|5|12|18|28)\b/i);
+  var gstPct = gstM ? parseInt(gstM[1], 10) : null;
+
+  // Supplier: first non-empty line that isn't an obvious label/number.
+  var supplier = _guessSupplier_(t);
+
+  return { supplier: supplier, gstin: g ? g.gstin : null, invoiceNo: invoiceNo, amount: amount, gstPct: gstPct };
+}
+
+/** true if the party is out-of-state relative to PM (Maharashtra, code '27') → IGST. */
+function interStateFrom(stateCode) { return stateCode !== '27'; }
+
+// ── helpers ──
+function _largestAmount_(t) {
+  var re = /(?:₹|rs\.?|inr)?\s*((?:\d{1,2},)?(?:\d{2},)*\d{3}(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/gi;
+  var best = null, m;
+  while ((m = re.exec(t)) !== null) {
+    var n = parseFloat(m[1].replace(/,/g, ''));
+    if (!isNaN(n) && (best === null || n > best)) best = n;
+  }
+  return best;
+}
+
+function _guessSupplier_(t) {
+  var lines = t.split(/\r?\n/);
+  for (var i = 0; i < lines.length; i++) {
+    var ln = lines[i].trim();
+    if (!ln) continue;
+    if (/^(tax\s+invoice|invoice|bill|gstin|date|no\.?|amount|total)\b/i.test(ln)) continue;
+    if (/^[\d\W]+$/.test(ln)) continue; // pure numbers/punctuation
+    if (ln.length >= 3) return ln;
+  }
+  return '';
+}
+
+// Export for Node/vm test shims without affecting GAS (which ignores module).
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { parseGstin: parseGstin, parseBill: parseBill, interStateFrom: interStateFrom };
+}
