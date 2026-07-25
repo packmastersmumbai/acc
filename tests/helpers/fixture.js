@@ -34,7 +34,13 @@ async function loadPage(page, pageName, opts) {
   const queryShim = opts.query
     ? `<script>(function(){try{Object.defineProperty(window.location,'search',{configurable:true,value:'?${opts.query}'});}catch(e){window.__search='?${opts.query}';}})();</script>`
     : '';
-  const mockTag = `<script>${GAS_MOCK_SCRIPT}</script>` + queryShim;
+  // opts.overrides: { methodName: "function(args){ return ... }" } — seeded BEFORE
+  // the page's own scripts run, so first-load calls hit the override.
+  const overrideShim = opts.overrides
+    ? '<script>' + Object.entries(opts.overrides)
+        .map(([k, v]) => `window.__gasOverride(${JSON.stringify(k)}, ${v});`).join('') + '</script>'
+    : '';
+  const mockTag = `<script>${GAS_MOCK_SCRIPT}</script>` + queryShim + overrideShim;
   if (html.includes('<head>')) {
     html = html.replace('<head>', '<head>' + mockTag);
   } else if (html.includes('<html')) {

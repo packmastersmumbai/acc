@@ -1,0 +1,118 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reconcile</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Material+Symbols+Outlined&display=swap" rel="stylesheet"/>
+<style>
+  body { font-family:'Hanken Grotesk',sans-serif; background:#fafaf9; color:#18181b; }
+  .mono { font-family:'JetBrains Mono',monospace; }
+  .hairline-b { border-bottom:1px solid #e7e5e4; }
+  .btn-primary { background:#047857; color:#fff; border-radius:4px; }
+  .btn-primary:disabled { background:#a7d7c5; cursor:not-allowed; }
+  .btn-ghost { color:#71717a; border:1px solid #e7e5e4; border-radius:4px; }
+  .tag { color:#047857; background:rgba(4,120,87,0.1); border-radius:4px; }
+  .bar { height:4px; background:#e7e5e4; border-radius:9999px; overflow:hidden; }
+  .bar > div { height:100%; background:#047857; }
+</style>
+</head>
+<body class="min-h-screen">
+<header class="flex items-center justify-between px-4 h-16 hairline-b bg-[#fafaf9] sticky top-0 z-10">
+  <button class="p-2 -ml-2" onclick="history.back()"><span class="material-symbols-outlined">chevron_left</span></button>
+  <div class="mono text-sm uppercase tracking-wider font-bold">Reconcile</div>
+  <div class="w-10"></div>
+</header>
+
+<main class="max-w-3xl mx-auto px-4 py-4">
+  <div class="flex items-center justify-between mb-2">
+    <span id="progressLabel" class="mono text-xs uppercase text-[#71717a]">—</span>
+  </div>
+  <div class="bar mb-6"><div id="progressBar" style="width:0%"></div></div>
+
+  <div id="cardHost"></div>
+
+  <div id="actions" class="hidden fixed bottom-0 w-full left-0 px-4 py-4 bg-[#fafaf9]/95 border-t border-[#e7e5e4]">
+    <div class="max-w-3xl mx-auto flex gap-3">
+      <button id="skipBtn" class="flex-1 btn-ghost py-3 mono text-sm uppercase">Skip</button>
+      <button id="acceptBtn" class="flex-1 btn-primary py-3 mono text-sm uppercase" disabled title="Accept is disabled until the categorize spike is resolved">Accept</button>
+    </div>
+  </div>
+</main>
+
+<?!= include('pages/shared/money') ?>
+<?!= include('pages/shared/states') ?>
+<script>
+(function () {
+  // Accept is feature-flagged OFF until the acceptMatch POST body is resolved
+  // (gated spike). The button stays disabled; Skip advances the queue.
+  var ACCEPT_ENABLED = false;
+  var AXIS = '1161923000000540009';
+  var queue = [], idx = 0;
+
+  function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
+
+  function renderProgress() {
+    var total = queue.length, done = idx;
+    document.getElementById('progressLabel').textContent =
+      total ? (done + ' of ' + total + ' reviewed') : 'Nothing to reconcile';
+    document.getElementById('progressBar').style.width = total ? Math.round(done / total * 100) + '%' : '0%';
+  }
+
+  function renderCard() {
+    var host = document.getElementById('cardHost');
+    if (idx >= queue.length) {
+      document.getElementById('actions').classList.add('hidden');
+      AppStates.empty('#cardHost', 'All caught up', 'No more uncategorized transactions.');
+      renderProgress();
+      return;
+    }
+    var t = queue[idx];
+    document.getElementById('actions').classList.remove('hidden');
+    host.innerHTML =
+      '<div class="hairline-b pb-4 mb-4">' +
+      '<div class="mono text-xs uppercase text-[#71717a]">' + esc(t.date) + ' · ' + esc(t.type) + '</div>' +
+      '<div class="mono text-2xl mt-1">' + inr(t.amount) + '</div>' +
+      '<div class="text-sm text-[#71717a] mt-2">' + esc(t.narration) + '</div></div>' +
+      '<div id="suggestHost"></div>';
+    renderProgress();
+    loadSuggestion(t);
+  }
+
+  function loadSuggestion(t) {
+    AppStates.loading('#suggestHost', 'Finding a match…');
+    google.script.run
+      .withSuccessHandler(function (m) {
+        if (!m) { AppStates.empty('#suggestHost', 'No suggested match', 'Skip or categorize manually in Zoho.'); return; }
+        document.getElementById('suggestHost').innerHTML =
+          '<div class="mono text-xs uppercase text-[#71717a] mb-2">Suggested match</div>' +
+          '<div class="flex justify-between items-center py-3 hairline-b">' +
+          '<div><div class="mono text-sm">' + esc(m.label || m.id) + '</div>' +
+          '<div class="mono text-xs text-[#71717a]">' + esc(m.type || '') + '</div></div>' +
+          '<span class="mono text-xs uppercase tag px-2 py-0.5">' + esc(m.confidence) + '</span></div>';
+        if (ACCEPT_ENABLED) document.getElementById('acceptBtn').disabled = false;
+      })
+      .withFailureHandler(function () { AppStates.error('#suggestHost', 'Could not fetch a match', function(){ loadSuggestion(t); }); })
+      .suggestMatch(t);
+  }
+
+  function advance() { idx++; renderCard(); }
+
+  document.getElementById('skipBtn').addEventListener('click', advance);
+  document.getElementById('acceptBtn').addEventListener('click', function () {
+    if (!ACCEPT_ENABLED) return; // hard guard even if enabled by DOM tampering
+    advance();
+  });
+
+  function load() {
+    AppStates.loading('#cardHost', 'Loading queue…');
+    google.script.run
+      .withSuccessHandler(function (list) { queue = list || []; idx = 0; renderCard(); })
+      .withFailureHandler(function () { AppStates.error('#cardHost', 'Could not load transactions', load); })
+      .uncategorized(AXIS);
+  }
+
+  document.addEventListener('DOMContentLoaded', load);
+  if (document.readyState !== 'loading') load();
+  window.__reconAcceptEnabled = ACCEPT_ENABLED;
+})();
+</script>
+</body></html>
