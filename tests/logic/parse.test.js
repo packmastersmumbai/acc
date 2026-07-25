@@ -131,6 +131,55 @@ test('parseBill gets the invoice number from an inline "Invoice Number :"', () =
   expect(ctx.parseBill(AEROL).invoiceNo).toBe('DEL5-2627');
 });
 
+// Real photographed RBQ Enterprises bill. Intra-state (both parties 27), so tax
+// is split CGST 9% + SGST 9%, and OUR OWN gstin appears in the receiver block
+// BEFORE the seller's.
+const RBQ = [
+  'RBQ ENTERPRISES',
+  'Digital & Offset Print Solution',
+  'TAX INVOICE',
+  'Details of Receiver :',
+  'PACK MASTERS',
+  'INVOICE NO.:  RBQ/2026-27/142',
+  'INVOICE DATE :  04-07-2026',
+  'Consignor Name & Address :',
+  'RBQ ENTERPRISES',
+  'STATE CODE : 27',
+  'GSTIN  : 27AFGPM0888K1ZY',
+  'GSTIN  : 27PPEPS9516F1Z6',
+  '1  BUGSEAL Labels for 2170   2170   20.00   43400.00',
+  'Total Amount Before Tax',
+  '43,400.00',
+  'Add : SGST   9%',
+  '3,906.00',
+  'Add : CGST   9%',
+  '3,906.00',
+  'Total Tax Amount  GST',
+  '7,812.00',
+  'Total Invoice Amount After GST Tax',
+  '51,212.00',
+].join('\n');
+
+test('parseBill takes the SELLER gstin even when ours appears first', () => {
+  // 27AFGPM0888K1ZY is Pack Masters' own — posting a bill against it would
+  // book the purchase to ourselves.
+  expect(ctx.parseBill(RBQ).gstin).toBe('27PPEPS9516F1Z6');
+});
+
+test('parseBill sums CGST + SGST into one rate for an intra-state bill', () => {
+  expect(ctx.parseBill(RBQ).gstPct).toBe(18);
+});
+
+test('parseBill reads the after-tax total, not the taxable value', () => {
+  expect(ctx.parseBill(RBQ).amount).toBe(51212);
+  expect(ctx.parseBill(RBQ).supplier).toBe('RBQ ENTERPRISES');
+  expect(ctx.parseBill(RBQ).invoiceNo).toBe('RBQ/2026-27/142');
+});
+
+test('an intra-state bill is not flagged inter-state', () => {
+  expect(ctx.interStateFrom(ctx.parseBill(RBQ).gstin.slice(0, 2))).toBe(false);
+});
+
 test('parseBill degrades gracefully on sparse text', () => {
   const b = ctx.parseBill('handwritten note');
   expect(b.gstin).toBe(null);

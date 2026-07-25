@@ -5,13 +5,35 @@
  *   e.g. 27AABFY9773F1ZN  →  state 27, PAN AABFY9773F.
  */
 
-/** @return {{gstin:string, pan:string, stateCode:string}|null} */
+/**
+ * Pack Masters' OWN GSTIN. A purchase bill names both parties, and on many
+ * layouts the RECEIVER (us) is printed before the seller — returning it would
+ * post the bill against ourselves, so it is excluded from supplier matching.
+ */
+var OWN_GSTIN = '27AFGPM0888K1ZY';
+
+var GSTIN_RE = /\b(\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d])\b/g;
+
+/**
+ * The counterparty's GSTIN — the first one that is not ours.
+ * @return {{gstin:string, pan:string, stateCode:string}|null}
+ */
 function parseGstin(text) {
   if (!text) return null;
-  var m = String(text).toUpperCase().match(/\b(\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d])\b/);
-  if (!m) return null;
-  var gstin = m[1];
-  return { gstin: gstin, stateCode: gstin.slice(0, 2), pan: gstin.slice(2, 12) };
+  var t = String(text).toUpperCase();
+  var re = new RegExp(GSTIN_RE.source, 'g');
+  var first = null, m;
+  while ((m = re.exec(t)) !== null) {
+    if (!first) first = m[1];
+    if (m[1] !== OWN_GSTIN) return _gstinParts_(m[1]);
+  }
+  // Only our own appeared (e.g. a sales invoice we issued) — return it rather
+  // than nothing, so the caller still sees a valid, parseable id.
+  return first ? _gstinParts_(first) : null;
+}
+
+function _gstinParts_(g) {
+  return { gstin: g, stateCode: g.slice(0, 2), pan: g.slice(2, 12) };
 }
 
 /**
@@ -34,9 +56,7 @@ function parseBill(text) {
   // real total, and guessing wrong posts a wrong bill to Zoho silently.
   var amount = _labelledAmount_(t);
 
-  // GST %: an explicit 5/12/18/28 near "GST"/"tax"/"%".
-  var gstM = t.match(/\b(0|5|12|18|28)\s*%/) || t.match(/(?:gst|igst|cgst|sgst)[^0-9]{0,8}(0|5|12|18|28)\b/i);
-  var gstPct = gstM ? parseInt(gstM[1], 10) : null;
+  var gstPct = _gstPct_(t);
 
   // Supplier: first non-empty line that isn't an obvious label/number.
   var supplier = _guessSupplier_(t);
@@ -46,6 +66,41 @@ function parseBill(text) {
 
 /** true if the party is out-of-state relative to PM (Maharashtra, code '27') → IGST. */
 function interStateFrom(stateCode) { return stateCode !== '27'; }
+
+/**
+ * The bill's total GST rate.
+ *
+ * An INTRA-state bill splits the rate in half across CGST and SGST ("Add : SGST
+ * 9%" + "Add : CGST 9%" = 18). Reading a single "9%" off such a bill would
+ * halve the tax, so the two halves are summed. Inter-state bills carry one
+ * IGST line and are read directly.
+ */
+function _gstPct_(t) {
+  var VALID = { 0: 1, 5: 1, 12: 1, 18: 1, 28: 1 };
+
+  var cgst = _rateAfter_(t, /c\s*gst/i);
+  var sgst = _rateAfter_(t, /s\s*gst|ut\s*gst/i);
+  if (cgst !== null && sgst !== null && VALID[cgst + sgst]) return cgst + sgst;
+
+  var igst = _rateAfter_(t, /i\s*gst/i);
+  if (igst !== null && VALID[igst]) return igst;
+
+  // Fall back to a bare "18%" anywhere, then a rate near the word GST.
+  var m = t.match(/\b(0|5|12|18|28)\s*%/) ||
+          t.match(/(?:gst|tax)[^0-9%]{0,10}(0|5|12|18|28)\b/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/** The percentage printed on the same line as a tax label, e.g. "SGST 9%". */
+function _rateAfter_(t, labelRe) {
+  var lines = String(t).split(/\r?\n/);
+  for (var i = 0; i < lines.length; i++) {
+    if (!labelRe.test(lines[i])) continue;
+    var m = lines[i].match(/(\d{1,2}(?:\.\d+)?)\s*%/);
+    if (m) return parseFloat(m[1]);
+  }
+  return null;
+}
 
 // ── helpers ──
 
