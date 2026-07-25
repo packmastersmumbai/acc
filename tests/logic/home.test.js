@@ -56,6 +56,39 @@ test('contacts with no contact_id stay inert rather than borrowing another id', 
   expect(roll.attention[0].contact_ids).toEqual([]);
 });
 
+// The attention list is useless without a reason — a bare sorted balance list
+// tells the user nothing they could not see in Zoho itself.
+test('attention rows state WHY the party is flagged, and on which side', () => {
+  const roll = ctx.rollupContacts([
+    { contact_id: 'v', contact_name: 'Yash Poly Plast', outstanding_payable_amount: '5000', outstanding_receivable_amount: 0 },
+    { contact_id: 'c', contact_name: 'Henkel', outstanding_receivable_amount: '10000', outstanding_payable_amount: 0 },
+  ]);
+  const henkel = roll.attention.find((p) => p.name === 'Henkel');
+  const yash = roll.attention.find((p) => p.name === 'Yash Poly Plast');
+
+  expect(henkel.side).toBe('receivable');
+  expect(henkel.gap).toBe('They owe us');
+  expect(yash.side).toBe('payable');
+  expect(yash.gap).toBe('We owe them');
+});
+
+test('a party owed on BOTH sides is flagged as such, not silently netted', () => {
+  const roll = ctx.rollupContacts([
+    { contact_id: 'b', contact_name: 'Dorf Ketal', outstanding_receivable_amount: '4000', outstanding_payable_amount: '1000' },
+  ]);
+  expect(roll.attention[0].side).toBe('both');
+  expect(roll.attention[0].gap).toBe('Owed both ways');
+  expect(roll.attention[0].amount).toBe(5000);
+});
+
+test('a casing-merged party spanning duplicates says so in the gap', () => {
+  const roll = ctx.rollupContacts([
+    { contact_id: 'a', contact_name: 'Yash Poly Plast', outstanding_payable_amount: '3000', outstanding_receivable_amount: 0 },
+    { contact_id: 'b', contact_name: 'YASH POLY PLAST', outstanding_payable_amount: '5000', outstanding_receivable_amount: 0 },
+  ]);
+  expect(roll.attention[0].gap).toBe('We owe them · 2 duplicate records');
+});
+
 test('rollupContacts sorts attention by largest balance and skips zero-balance', () => {
   const roll = ctx.rollupContacts([
     { contact_name: 'Small', outstanding_payable_amount: '100', outstanding_receivable_amount: 0 },
