@@ -368,6 +368,109 @@ test('Shubh: Gujarat seller to Maharashtra buyer is inter-state (IGST)', () => {
   expect(ctx.interStateFrom(ctx.parseBill(SHUBH).gstin.slice(0, 2))).toBe(true);
 });
 
+// VERBATIM Drive OCR of two Tally e-invoices. Tally prints the grand total in
+// the ITEM table ("₹ 12,272.000") with no "Total:" label beside it, while the
+// trailing HSN summary repeats only the taxable value and the tax — so the
+// trailing-block fallback picks the TAXABLE VALUE and under-posts the bill.
+const RAJKAMAL_OCR = [
+  '________________',
+  '',
+  'TAX INVOICE',
+  '(ORIGINAL FOR RECIPIENT)',
+  'IRN',
+  ': fe7eb3b657b9464da62e0025a4705a3574415114-',
+  'Ack No. : 122632339952283',
+  'e-Invoice',
+  'RAJKAMAL BAR-SCAN SYSTEMS PVT. LTD. A-17, GALA NO.03, PRITESH COMPLEX, OWALI VILLAGE, DAPODA ROAD, BHIWANDI, MAHARASHTRA-421302 Mob No.+919321868705',
+  'Mr.Manesh Shinde',
+  'GSTIN/UIN: 27AAACR6721N1Z2',
+  'State Name: Maharashtra, Code: 27 CIN: U86202MH1997PTC107776',
+  'E-Mail: warehouse@rajkamalbarscan.com Buyer (Bill to)',
+  'PACK MASTERS',
+  'GSTIN/UIN',
+  '27AFGPM0888K1ZY',
+  'Invoice No.',
+  'RBLB/0247/26-27 Delivery Note',
+  'CGST @ 9.00% -OUTPUT SGST @ 9.00% -OUTPUT',
+  '10,400.000',
+  '9% 9%',
+  '936.000 936.000',
+  '20,000.000 no',
+  '12,272.000',
+  'E.&O.E',
+  'CGST',
+  'Total 10,400.000',
+  'Taxable Value Rate Amount Rate Amount Tax Amount 10,400.000 9% 936.000 9% 936.000 1,872.000 936.000 936.000',
+  'Total',
+  '1,872.000',
+  'Total',
+  'INR Twelve Thousand Two Hundred Seventy Two Only',
+].join('\n');
+
+const RUKSON_OCR = [
+  '________________',
+  '',
+  '222231 101709',
+  'TAX INVOICE CUM DELIVERY CHALLAN (ORIGINAL FOR RECIPIENT)',
+  'e-Invoice',
+  'IRN',
+  'RP',
+  'Rukson Packaging Pvt.Ltd R-273, TTC Industrial Area Rabale Navi Mumbai 400701 GSTIN/UIN: 27AAACJ4374M1Z7 State Name: Maharashtra, Code: 27 CIN: U28990MH1986PTC040643 E-Mail: accounts@rukson.in',
+  'Consignee (Ship to)',
+  'Pack Masters',
+  'GSTIN/UIN',
+  'Pack Masters',
+  '27AFGPM0888K1ZY',
+  'Buyer (Bill to)',
+  'GSTIN/UIN',
+  ':27AFGPM0888K1ZY',
+  'Invoice No. 701/26-27 Delivery Note',
+  '48192020 5,820.00 Nos',
+  '12.00 Nos',
+  '69,840.00',
+  'CGST SGST',
+  '1,746.00 1,746.00',
+  'Amount Chargeable (in words)',
+  'Total',
+  'Rs. Seventy Three Thousand Three Hundred Thirty Two Only',
+  'Taxable Value',
+  'Total',
+  'Rate 69,840.00 2.50% 69,840.00',
+  '5,820.00 Nos',
+  '73,332.00 E.&O.E',
+  'Amount Rate 1,746.00 2.50% 1,746.00',
+  '3,492.00 3,492.00',
+].join('\n');
+
+test('Tally: grand total wins over the taxable value (under-posting is costly)', () => {
+  expect(ctx.parseBill(RAJKAMAL_OCR).amount).toBe(12272);
+  expect(ctx.parseBill(RUKSON_OCR).amount).toBe(73332);
+});
+
+test('Tally: invoice number is not OUR gstin', () => {
+  expect(ctx.parseBill(RAJKAMAL_OCR).invoiceNo).toBe('RBLB/0247/26-27');
+  expect(ctx.parseBill(RUKSON_OCR).invoiceNo).toBe('701/26-27');
+});
+
+test('Tally: supplier is the vendor, not a document banner', () => {
+  // "(ORIGINAL FOR RECIPIENT)" and "e-Invoice" used to win here.
+  expect(ctx.parseBill(RAJKAMAL_OCR).supplier).toBe('RAJKAMAL BAR-SCAN SYSTEMS PVT. LTD.');
+  expect(ctx.parseBill(RUKSON_OCR).supplier).toBe('Rukson Packaging Pvt.Ltd');
+});
+
+test('supplier name is cut after the LAST legal suffix, not the first', () => {
+  // "Rukson Packaging Pvt.Ltd" holds two matches; cutting at "Packaging"
+  // would drop the legal form and weaken any name-based lookup.
+  expect(ctx._trimAfterEntitySuffix_('Rukson Packaging Pvt.Ltd R-273, TTC Area'))
+    .toBe('Rukson Packaging Pvt.Ltd');
+});
+
+test('Tally: seller gstin, and the rate comes from the CGST/SGST lines', () => {
+  expect(ctx.parseBill(RAJKAMAL_OCR).gstin).toBe('27AAACR6721N1Z2');
+  expect(ctx.parseBill(RAJKAMAL_OCR).gstPct).toBe(18);
+  expect(ctx.parseBill(RUKSON_OCR).gstin).toBe('27AAACJ4374M1Z7');
+});
+
 test('parseBill degrades gracefully on sparse text', () => {
   const b = ctx.parseBill('handwritten note');
   expect(b.gstin).toBe(null);

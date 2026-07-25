@@ -57,7 +57,12 @@ function parseBill(text) {
   // Amount: read the figure sitting on a total-ish LABEL. Never "largest number
   // on the page" — HSN codes (39231010), PIN codes and phone numbers all dwarf a
   // real total, and guessing wrong posts a wrong bill to Zoho silently.
-  var amount = _labelledAmount_(t);
+  // Prefer the amount spelled out in words — "Amount Chargeable (in words)" is
+  // the one figure on a bill that OCR cannot transpose and that no summary row
+  // can outrank. Tally invoices print the grand total in the item table with no
+  // label, so figure-based reads pick the taxable value and under-post.
+  var amount = _amountFromWords_(t);
+  if (amount === null) amount = _labelledAmount_(t);
 
   var gstPct = _gstPct_(t);
 
@@ -129,6 +134,57 @@ function _rateAfter_(t, labelRe) {
 
 // ── helpers ──
 
+var NUM_WORDS = {
+  zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
+  ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15, sixteen:16,
+  seventeen:17, eighteen:18, nineteen:19, twenty:20, thirty:30, forty:40,
+  fifty:50, sixty:60, seventy:70, eighty:80, ninety:90
+};
+var NUM_SCALES = { hundred:100, thousand:1000, lakh:100000, lakhs:100000,
+                   crore:10000000, crores:10000000, million:1000000 };
+
+/**
+ * The invoice total as spelled out on the bill, e.g.
+ *   "INR Twelve Thousand Two Hundred Seventy Two Only"  -> 12272
+ *   "Rs. Seventy Three Thousand Three Hundred Thirty Two Only" -> 73332
+ * Words are immune to the column/row scrambling that defeats figure parsing,
+ * and Indian invoices are legally required to carry them.
+ * @return {number|null}
+ */
+function _amountFromWords_(t) {
+  var lines = String(t || '').split(/\r?\n/);
+  for (var i = 0; i < lines.length; i++) {
+    // Anchor on a currency word followed by number words and "only".
+    var m = lines[i].match(/(?:INR|Rs\.?|Rupees?|Indian\s+Rupees?)\s+([A-Za-z\s\-]+?)\s*only\b/i);
+    if (!m) continue;
+    // "Tax Amount (in words)" states the TAX, not the invoice total — skip it.
+    if (/tax\s+amount/i.test(lines[i])) continue;
+    var n = _wordsToNumber_(m[1]);
+    if (n > 0) return n;
+  }
+  return null;
+}
+
+/** Parse Indian-English number words (incl. lakh/crore) into a number. */
+function _wordsToNumber_(s) {
+  var words = String(s).toLowerCase().replace(/-/g, ' ').split(/\s+/);
+  var total = 0, chunk = 0, saw = false;
+  for (var i = 0; i < words.length; i++) {
+    var w = words[i];
+    if (w === 'and' || !w) continue;
+    if (NUM_WORDS.hasOwnProperty(w)) { chunk += NUM_WORDS[w]; saw = true; continue; }
+    if (NUM_SCALES.hasOwnProperty(w)) {
+      var scale = NUM_SCALES[w];
+      if (scale === 100) { chunk = (chunk || 1) * 100; }
+      else { total += (chunk || 1) * scale; chunk = 0; }
+      saw = true;
+      continue;
+    }
+    return 0;   // an unknown word means this is prose, not an amount
+  }
+  return saw ? total + chunk : 0;
+}
+
 /** Looks like a document number: has a digit, and a separator or mixed case. */
 var INV_TOKEN_RE = /^[A-Z0-9][A-Z0-9\/\-]{3,}$/i;
 
@@ -142,15 +198,31 @@ function _invoiceNoNearLabel_(t) {
   var labelRe = /(invoice|bill)\s*(no\.?|number|#)/i;
   for (var i = 0; i < lines.length; i++) {
     if (!labelRe.test(lines[i])) continue;
+
+    // Tally runs the value onto the label's OWN line and then continues with
+    // the next field: "Invoice No. 701/26-27 Delivery Note". Take the first
+    // document-shaped token after the label before looking at neighbours.
+    var tail = lines[i].replace(/^.*?(invoice|bill)\s*(no\.?|number|#)\s*[:\-]?\s*/i, '');
+    var tok = tail.split(/\s+/)[0];
+    if (tok && INV_TOKEN_RE.test(tok) && /\d/.test(tok) && !/^\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4}$/.test(tok)) {
+      return tok.replace(/[.,;:]+$/, '');
+    }
+
     // nearest non-empty neighbours: behind first (the observed OCR order), then ahead
     var probes = [i - 1, i - 2, i + 1, i + 2];
     for (var k = 0; k < probes.length; k++) {
       var j = probes[k];
       if (j < 0 || j >= lines.length) continue;
-      var ln = lines[j].trim();
+      // A neighbour line often carries the value THEN the next field
+      // ("RBLB/0247/26-27 Delivery Note"), so test its first token.
+      var ln = lines[j].trim().split(/\s+/)[0].replace(/[.,;:]+$/, '');
       if (!ln || !INV_TOKEN_RE.test(ln)) continue;
       if (!/\d/.test(ln)) continue;                 // must carry a digit
       if (/^\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4}$/.test(ln)) continue;  // a date
+      // A GSTIN/PAN sitting next to the label is an id, never a document
+      // number — Tally stacks "GSTIN/UIN" above "Invoice No." in the same block.
+      if (new RegExp('^' + GSTIN_RE.source.replace(/\\b/g, '') + '$', 'i').test(ln)) continue;
+      if (/^[A-Z]{5}\d{4}[A-Z]$/i.test(ln)) continue;                // bare PAN
       return ln;
     }
   }
@@ -249,7 +321,14 @@ function _trailingFigureBlockMax_(lines) {
  * name on the following line was never reached.
  */
 var SUPPLIER_LABEL_RE = /^(sold\s*by|seller|supplier|vendor|from|billed\s*by|sold\s*to|ship(ped)?\s*by)\s*[:\-]?\s*$/i;
-var NOT_SUPPLIER_RE = /^(tax\s+invoice|invoice|bill|gstin|gst\b|pan\b|date|no\.?|amount|total|irn|billing\s*address|shipping\s*address|place\s*of|state\/ut|order\s*number)\b/i;
+var NOT_SUPPLIER_RE = /^(tax\s+invoice|invoice|bill|gstin|gst\b|pan\b|date|no\.?|amount|total|irn|ack\s*(no|date)|e-?invoice|e-?way|billing\s*address|shipping\s*address|consignee|buyer|place\s*of|state\s*name|state\/ut|order\s*number|description|declaration|company'?s)\b/i;
+
+/**
+ * Document banners that are not company names: "(ORIGINAL FOR RECIPIENT)",
+ * "e-Invoice", "TAX INVOICE CUM DELIVERY CHALLAN". They survive the other
+ * filters because they are pure prose, so they are matched anywhere in a line.
+ */
+var BANNER_RE = /^\(?\s*(original|duplicate|triplicate)\s+for\b|^e-?invoice$|^\(?(original|office|transporter)\s*copy/i;
 
 /**
  * A company's legal form. A line carrying one of these is the full registered
@@ -257,6 +336,19 @@ var NOT_SUPPLIER_RE = /^(tax\s+invoice|invoice|bill|gstin|gst\b|pan\b|date|no\.?
  * ("SHUBH" / "PROPACK PVT. LTD.") sitting ABOVE the real name.
  */
 var ENTITY_SUFFIX_RE = /\b(private\s+limited|pvt\.?\s*ltd|limited|ltd|llp|enterprises?|industries|corporation|corp|company|co\.|& sons|traders|packaging|udyog)\b/i;
+
+/**
+ * Drop everything after the legal-form suffix — that is where the name ends.
+ * Uses the LAST suffix in the line: "Rukson Packaging Pvt.Ltd" contains both
+ * "Packaging" and "Pvt.Ltd", and cutting at the first would lose the form.
+ */
+function _trimAfterEntitySuffix_(s) {
+  var re = new RegExp(ENTITY_SUFFIX_RE.source, 'gi'), m, end = -1;
+  while ((m = re.exec(s)) !== null) end = m.index + m[0].length;
+  if (end < 0) return s;
+  if (s.charAt(end) === '.') end++;   // keep the dot on "Pvt.Ltd."
+  return s.slice(0, end).trim();
+}
 
 function _guessSupplier_(t) {
   var lines = t.split(/\r?\n/);
@@ -272,7 +364,10 @@ function _guessSupplier_(t) {
     if (NOT_SUPPLIER_RE.test(cand) || SUPPLIER_LABEL_RE.test(cand)) continue;
     if (/\d{6}|gstin|phone|pan[:\s]|e-?mail|@/i.test(cand)) continue;  // address/contact line
     if (_isOwnName_(cand)) continue;                                   // the buyer is us
-    cand = cand.split(/\s{2,}|,\s/)[0].trim();
+    // OCR runs the name straight into its address ("Rukson Packaging Pvt.Ltd
+    // R-273, TTC..."). Cut just after the legal suffix — that is where the
+    // registered name ends.
+    cand = _trimAfterEntitySuffix_(cand.split(/\s{2,}|,\s/)[0].trim());
     // A split logo yields a FRAGMENT ("PROPACK PVT. LTD.") above the full
     // registered name. Both carry a suffix, so prefer the longer one.
     if (!best || cand.length > best.length) best = cand;
@@ -284,6 +379,8 @@ function _guessSupplier_(t) {
     if (!ln) continue;
     if (SUPPLIER_LABEL_RE.test(ln)) continue;   // a label — the name follows it
     if (NOT_SUPPLIER_RE.test(ln)) continue;
+    if (BANNER_RE.test(ln)) continue;           // document banner, not a company
+    if (_isOwnName_(ln)) continue;              // the buyer is us
     if (/^[\d\W]+$/.test(ln)) continue;         // pure numbers/punctuation
     if (ln.length < 3) continue;
     // Scanner edge artifacts: a run of underscores/dashes, or a digit-heavy
@@ -296,7 +393,7 @@ function _guessSupplier_(t) {
     // The name is usually followed by its address on the same OCR line. Cut at
     // the first address-ish marker so "AEROL FORMULATIONS PRIVATE LIMITED *
     // Rect/Killa Nos…" yields just the company.
-    return ln.split(/\s+[*|]|,\s|\s{2,}/)[0].trim();
+    return _trimAfterEntitySuffix_(ln.split(/\s+[*|]|,\s|\s{2,}/)[0].trim());
   }
   return '';
 }
