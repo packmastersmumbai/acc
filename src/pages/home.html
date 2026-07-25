@@ -4,6 +4,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>PackMasters Accounts</title>
+<script>window.__appUrl = "<?= appUrl ?>";</script>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com" rel="preconnect"/>
@@ -181,11 +182,8 @@
 <span class="text-label-sm font-label-sm tracking-widest text-on-surface-variant uppercase">PACK MASTERS</span>
 </div>
 <div class="flex items-center gap-6 text-label-sm font-label-sm">
-<a class="text-secondary hover:bg-surface-container px-3 py-1 rounded transition-colors" href="#">Ledger</a>
-<a class="text-secondary hover:bg-surface-container px-3 py-1 rounded transition-colors" href="#">Inventory</a>
-<a class="text-primary hover:bg-surface-container px-3 py-1 rounded transition-colors" href="#">Scan</a>
-<a class="text-secondary hover:bg-surface-container px-3 py-1 rounded transition-colors" href="#">Reports</a>
-<a class="text-secondary hover:bg-surface-container px-3 py-1 rounded transition-colors" href="#">Settings</a>
+<a class="text-secondary hover:bg-surface-container px-3 py-1 rounded transition-colors cursor-pointer" data-go="reconcile">Reconcile</a>
+<a class="text-primary hover:bg-surface-container px-3 py-1 rounded transition-colors cursor-pointer" data-go="scan">Scan</a>
 <span class="material-symbols-outlined cursor-pointer hover:bg-surface-container p-2 rounded transition-colors duration-200 ml-4" data-icon="account_balance_wallet">account_balance_wallet</span>
 </div>
 </header>
@@ -205,7 +203,7 @@
 </section>
 <!-- Scan Action -->
 <section class="mb-stack-lg">
-<button class="w-full flex items-center p-stack-md bg-primary-container/5 border border-dashed border-primary/30 rounded-lg hover:bg-primary-container/10 transition-colors text-left group">
+<button data-go="scan" class="w-full flex items-center p-stack-md bg-primary-container/5 border border-dashed border-primary/30 rounded-lg hover:bg-primary-container/10 transition-colors text-left group">
 <span class="material-symbols-outlined text-primary mr-gutter group-hover:scale-110 transition-transform" data-icon="document_scanner">document_scanner</span>
 <div>
 <div class="font-headline-md text-[16px] text-primary">Scan bill or receipt</div>
@@ -236,28 +234,20 @@
 </main>
 <!-- BottomNavBar (Mobile) -->
 <nav class="md:hidden fixed bottom-0 w-full z-50 flex justify-around items-center h-20 bg-surface px-gutter border-t border-[#e7e5e4] pb-2">
-<a class="flex flex-col items-center justify-center text-secondary px-3 py-1 hover:text-primary-fixed-dim active:scale-95 transition-transform duration-150" href="#">
+<a data-go="reconcile" class="flex flex-col items-center justify-center text-secondary px-3 py-1 active:scale-95 transition-transform duration-150 cursor-pointer">
 <span class="material-symbols-outlined mb-1" data-icon="account_balance">account_balance</span>
-<span class="text-label-sm font-label-sm">Ledger</span>
+<span class="text-label-sm font-label-sm">Reconcile</span>
 </a>
-<a class="flex flex-col items-center justify-center text-secondary px-3 py-1 hover:text-primary-fixed-dim active:scale-95 transition-transform duration-150" href="#">
-<span class="material-symbols-outlined mb-1" data-icon="factory">factory</span>
-<span class="text-label-sm font-label-sm">Inventory</span>
-</a>
-<!-- Active Tab: Scan based on context of 'Home' focusing heavily on ledger/scan actions, but prompt mentioned Ledger is default Home often, we'll set Scan as active based on request details if needed, but Ledger fits better. Let's stick to JSON active state logic: Ledger is active. -->
-<a class="flex flex-col items-center justify-center text-primary bg-primary-container/10 rounded-xl px-3 py-1 active:scale-95 transition-transform duration-150" href="#">
+<a data-go="scan" class="flex flex-col items-center justify-center text-primary bg-primary-container/10 rounded-xl px-3 py-1 active:scale-95 transition-transform duration-150 cursor-pointer">
 <span class="material-symbols-outlined mb-1" data-icon="qr_code_scanner" data-weight="fill">qr_code_scanner</span>
 <span class="text-label-sm font-label-sm font-bold">Scan</span>
 </a>
-<a class="flex flex-col items-center justify-center text-secondary px-3 py-1 hover:text-primary-fixed-dim active:scale-95 transition-transform duration-150" href="#">
-<span class="material-symbols-outlined mb-1" data-icon="analytics">analytics</span>
-<span class="text-label-sm font-label-sm">Reports</span>
-</a>
-<a class="flex flex-col items-center justify-center text-secondary px-3 py-1 hover:text-primary-fixed-dim active:scale-95 transition-transform duration-150" href="#">
-<span class="material-symbols-outlined mb-1" data-icon="settings">settings</span>
-<span class="text-label-sm font-label-sm">Settings</span>
+<a data-go="home" class="flex flex-col items-center justify-center text-secondary px-3 py-1 active:scale-95 transition-transform duration-150 cursor-pointer">
+<span class="material-symbols-outlined mb-1" data-icon="home">home</span>
+<span class="text-label-sm font-label-sm">Home</span>
 </a>
 </nav>
+<?!= include('pages/shared/nav') ?>
 <?!= include('pages/shared/money') ?>
 <?!= include('pages/shared/states') ?>
 <script>

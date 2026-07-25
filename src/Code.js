@@ -5,9 +5,12 @@
 function doGet(e) {
   const p = (e && e.parameter && e.parameter.p) || 'home';
   const t = HtmlService.createTemplateFromFile('pages/' + p);
+  t.appUrl = ScriptApp.getService().getUrl();  // pages use this to navigate (top.location)
+  t.qs = (e && e.parameter) || {};
   return t.evaluate()
     .setTitle('PackMasters Accounts')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 /** Include a partial file inside a template: <?!= include('pages/shared/foo') ?> */

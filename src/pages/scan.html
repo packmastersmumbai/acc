@@ -1,6 +1,7 @@
 <!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Scan bill</title>
+<script>window.__appUrl = "<?= appUrl ?>";</script>
 <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Material+Symbols+Outlined&display=swap" rel="stylesheet"/>
 <style>
@@ -80,6 +81,7 @@
   <button id="postBtn" class="w-full btn-primary py-3 mono text-sm uppercase tracking-wide">Post bill to Zoho</button>
 </div>
 
+<?!= include('pages/shared/nav') ?>
 <?!= include('pages/shared/money') ?>
 <?!= include('pages/shared/states') ?>
 <?!= include('pages/shared/downscale') ?>
@@ -144,10 +146,7 @@
 
   document.getElementById('createVendorBtn').addEventListener('click', function () {
     if (!parsed) return;
-    var q = 'name=' + encodeURIComponent(parsed.supplier || '') +
-            '&gstin=' + encodeURIComponent(parsed.gstin || '');
-    // In GAS the router serves party.html via ?p=party; carry parsed fields.
-    window.location.search = '?p=party&' + q;
+    window.go('party', { name: parsed.supplier || '', gstin: parsed.gstin || '' });
   });
 
   // expose for tests to drive the flow without a real file picker

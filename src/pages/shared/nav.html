@@ -1,0 +1,28 @@
+<!-- Shared navigation. In GAS the app runs in a sandboxed iframe, so page changes
+     must use top.location with the real web-app URL (window.__appUrl, set from
+     <?= appUrl ?>). Include via <?!= include('pages/shared/nav') ?> and set
+     window.__appUrl BEFORE this runs. Exposes window.go(page, params). -->
+<script>
+(function () {
+  window.go = function (page, params) {
+    var base = window.__appUrl || '';
+    var qs = 'p=' + encodeURIComponent(page);
+    if (params) for (var k in params) qs += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+    var url = base ? (base + '?' + qs) : ('?' + qs);
+    // break out of the GAS sandbox iframe
+    try { window.top.location.href = url; }
+    catch (e) { window.location.href = url; }
+  };
+  // Wire any element with data-go="pageName" (optional data-go-params='{"k":"v"}').
+  document.addEventListener('DOMContentLoaded', function () {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-go]'), function (el) {
+      el.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        var p = null;
+        try { p = el.getAttribute('data-go-params') ? JSON.parse(el.getAttribute('data-go-params')) : null; } catch (e) {}
+        window.go(el.getAttribute('data-go'), p);
+      });
+    });
+  });
+})();
+</script>
