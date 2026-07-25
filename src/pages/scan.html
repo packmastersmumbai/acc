@@ -45,6 +45,12 @@
       <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">GSTIN</span><span id="rGstin" class="mono text-sm"></span></div>
       <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">Invoice</span><span id="rInvoice" class="mono text-sm"></span></div>
       <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">Amount</span><span id="rAmount" class="mono text-base"></span></div>
+      <div id="rDocRow" class="hidden flex justify-between items-center py-3 hairline-b">
+        <span class="mono text-xs text-[#71717a] uppercase">Document</span>
+        <a id="rDocLink" target="_blank" rel="noopener"
+           class="mono text-sm text-[#047857] underline flex items-center gap-1">
+          <span class="material-symbols-outlined text-base">description</span>Open in Drive</a>
+      </div>
     </div>
   </section>
 
@@ -131,7 +137,12 @@
               // Keep the original document — OCR discards its temp copy. Best-effort:
               // a Drive failure must not disturb a scan that already succeeded.
               google.script.run
-                .withSuccessHandler(function (r) { if (r && r.url) archivedUrl = r.url; })
+                .withSuccessHandler(function (r) {
+                  if (!r || !r.url) return;
+                  archivedUrl = r.url;
+                  document.getElementById('rDocLink').href = archivedUrl;
+                  show('rDocRow', true);
+                })
                 .withFailureHandler(function () { /* archiving is bookkeeping */ })
                 .archiveScan(img.base64, img.mime, p.supplier || '');
             })
@@ -154,6 +165,51 @@
 
   document.getElementById('fileInput').addEventListener('change', function (e) {
     if (e.target.files && e.target.files[0]) onFile(e.target.files[0]);
+  });
+
+  document.getElementById('postBtn').addEventListener('click', function () {
+    if (!parsed) return;
+    if (!matched) {
+      AppStates.error('#statusHost', 'Create or match a supplier before posting', null);
+      return;
+    }
+    // postBill needs an expense account for its line item, and parseBill cannot
+    // infer one from a bill image — which ledger account to charge is a
+    // bookkeeping decision. Until an account picker exists, refuse rather than
+    // post a miscoded bill to Zoho.
+    if (!parsed.expenseAccountId) {
+      AppStates.error('#statusHost',
+        'Cannot post yet — no expense account chosen for this bill', null);
+      return;
+    }
+    // This WRITES to Zoho — confirm explicitly rather than posting on one tap.
+    if (!window.confirm('Post this bill to Zoho for ' + matched.contact_name + '?')) return;
+
+    var btn = this;
+    btn.disabled = true;
+    AppStates.loading('#statusHost', 'Posting bill…');
+    google.script.run
+      .withSuccessHandler(function (r) {
+        AppStates.empty('#statusHost', 'Bill posted',
+          'Zoho bill ' + (r && r.bill_id ? r.bill_id : '') + ' created.');
+        show('actionBar', false);
+      })
+      .withFailureHandler(function (e) {
+        btn.disabled = false;
+        AppStates.error('#statusHost',
+          'Could not post the bill' + (e && e.message ? ' — ' + e.message : ''), null);
+      })
+      .postBill({
+        vendorId: matched.contact_id,
+        billNumber: parsed.invoiceNo,
+        date: parsed.date || new Date().toISOString().slice(0, 10),
+        amount: parsed.amount,
+        gstPct: parsed.gstPct,
+        inter: !!parsed.inter,
+        description: parsed.description || 'Goods',
+        expenseAccountId: parsed.expenseAccountId,
+        scanUrl: archivedUrl          // links the Zoho bill back to the Drive file
+      });
   });
 
   document.getElementById('createVendorBtn').addEventListener('click', function () {

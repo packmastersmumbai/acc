@@ -43,6 +43,10 @@ function postBill(obj) {
     date: obj.date,
     line_items: [line]
   };
+  // Link the archived scan (Drive) to the record it produced, so the bill in
+  // Zoho points back at the original document. notes is a plain text field —
+  // verified live to exist and be writable on bills.
+  if (obj.scanUrl) body.notes = 'Scanned document: ' + obj.scanUrl;
   var res = zohoPost('bills', body);
   return { success: true, bill_id: res.bill.bill_id };
 }

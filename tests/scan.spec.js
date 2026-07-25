@@ -133,3 +133,40 @@ test('archive failure does not disturb a scan that already succeeded', async ({ 
   await expect(page.locator('#matchedSection')).toBeVisible();
   await expect(page.locator('#statusHost')).not.toContainText('Could not');
 });
+
+test('archived document is shown as an openable Drive link', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await driveScan(page);
+
+  const link = page.locator('#rDocLink');
+  await expect(page.locator('#rDocRow')).toBeVisible();
+  await expect(link).toHaveAttribute('href', 'https://drive.google.com/file/d/1ArCh1V3/view');
+  // must open outside the GAS sandbox iframe, or Drive renders blank
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveAttribute('rel', /noopener/);
+});
+
+test('no document row when archiving failed', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await page.evaluate(() => {
+    window.__gasOverride('archiveScan', () => { throw new Error('drive down'); });
+  });
+  await driveScan(page);
+
+  await expect(page.locator('#readSection')).toBeVisible();
+  await expect(page.locator('#rDocRow')).toBeHidden();
+});
+
+test('post is refused until an expense account is known', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await page.evaluate(() => {
+    window.__posted = false;
+    window.__gasOverride('postBill', () => { window.__posted = true; return { success: true, bill_id: 'B1' }; });
+  });
+  await driveScan(page);
+
+  await page.locator('#postBtn').click();
+
+  await expect(page.locator('#statusHost')).toContainText('no expense account');
+  expect(await page.evaluate(() => window.__posted)).toBe(false); // no write to Zoho
+});
