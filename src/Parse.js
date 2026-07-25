@@ -15,6 +15,30 @@ var OWN_GSTIN = '27AFGPM0888K1ZY';
 /** Our own name, so a purchase bill's "Bill To" block never becomes the supplier. */
 function _isOwnName_(s) { return /pack\s*masters/i.test(s || ''); }
 
+/**
+ * Clean OCR output before anything reads it. Mirrors the decode/cleanup the
+ * repo's Python probes do (_ocr_test.py handles a UTF-16 export; _pdf_txns.py
+ * works around glyph noise):
+ *   - strip a BOM left by a UTF-16 export
+ *   - non-breaking / thin spaces become ordinary spaces
+ *   - smart quotes and unicode minus become ASCII
+ *   - close digit groups OCR split apart ("51, 212" -> "51,212")
+ * Idempotent — safe to call on already-clean text.
+ */
+function normalizeOcrText(text) {
+  var t = String(text == null ? '' : text);
+  t = t.replace(/^﻿/, '');
+  t = t.replace(/[    ]/g, ' ');
+  t = t.replace(/[‘’]/g, "'").replace(/[“”]/g, '"');
+  t = t.replace(/[‒–—−]/g, '-');
+  // "51, 212.00" and "73 332.00" are ONE number split by OCR spacing. Only
+  // joined when the tail is a full 2-or-3 digit group followed by a decimal or
+  // end of token, so genuine column runs ("Qty 5  200.00") are left alone.
+  t = t.replace(/(\d),[ \t]+(\d{2,3})\b/g, '$1,$2');
+  t = t.replace(/(\d)[ \t]+(\d{3}\.\d{2})\b/g, '$1,$2');
+  return t;
+}
+
 var GSTIN_RE = /\b(\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d])\b/g;
 
 /**
@@ -45,7 +69,7 @@ function _gstinParts_(g) {
  *           amount:number|null, gstPct:number|null}}
  */
 function parseBill(text) {
-  var t = String(text || '');
+  var t = normalizeOcrText(text);
   var g = parseGstin(t);
 
   // Invoice number: "Invoice/Bill No[.:] <token>" on the SAME line (no newline
@@ -69,7 +93,101 @@ function parseBill(text) {
   // Supplier: first non-empty line that isn't an obvious label/number.
   var supplier = _guessSupplier_(t);
 
-  return { supplier: supplier, gstin: g ? g.gstin : null, invoiceNo: invoiceNo, amount: amount, gstPct: gstPct };
+  var date = _invoiceDate_(t);
+
+  // Cross-check: taxable + tax should equal the total. postBill sends a real
+  // figure to Zoho, so a bill that does not add up must be shown to the user
+  // rather than trusted — this is the flag the scan screen gates posting on.
+  var taxable = _labelledFigure_(t, /\btaxable\b|total\s*(amount\s*)?before\s*tax|sub\s*-?\s*total|total\s*after\s*discount/i);
+  var taxAmount = _labelledFigure_(t, /total\s*tax\s*amount|tax\s*amount\b/i);
+  if (taxAmount === null) taxAmount = _sumTaxHalves_(t);
+  // The check is only meaningful when the three figures are self-consistent in
+  // shape: taxable must exceed the tax, and both must be below the total.
+  // Otherwise a mis-picked cell (a tax column read as "taxable") would raise a
+  // false alarm, which trains the user to ignore the warning.
+  var checksOut = null;
+  if (amount !== null && taxable !== null && taxAmount !== null &&
+      taxable > taxAmount && taxable < amount) {
+    checksOut = Math.abs((taxable + taxAmount) - amount) <= 1;   // allow round-off
+  } else {
+    taxable = (taxable !== null && taxAmount !== null && taxable <= taxAmount)
+      ? null : taxable;   // clearly not a taxable value — drop it
+  }
+
+  return { supplier: supplier, gstin: g ? g.gstin : null, invoiceNo: invoiceNo,
+           amount: amount, gstPct: gstPct, date: date,
+           taxable: taxable, taxAmount: taxAmount, checksOut: checksOut };
+}
+
+var MONTHS = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6,
+               jul:7, aug:8, sep:9, oct:10, nov:11, dec:12 };
+
+/**
+ * The invoice date as yyyy-MM-dd. postBill needs one and was silently
+ * defaulting every bill to today, which misdates the purchase in Zoho.
+ * Handles "06/07/2026" (Indian d/m/y) and Tally's "29-Apr-26".
+ * @return {string|null} null when absent — never invent a date.
+ */
+function _invoiceDate_(t) {
+  var lines = String(t || '').split(/\r?\n/);
+  // ONLY an explicit invoice-date label. A bare "Dated" is rejected: on Tally
+  // layouts it sits in the Buyer's-Order column, and reading it silently
+  // misdates the purchase in Zoho — worse than returning nothing.
+  var labelRe = /(invoice\s*date|bill\s*date|date\s*of\s*(invoice|supply))/i;
+  var OTHER = /(order|delivery|challan|ack|due|e-?way|dispatch|received?)/i;
+  for (var i = 0; i < lines.length; i++) {
+    if (!labelRe.test(lines[i]) || OTHER.test(lines[i])) continue;
+    // the value may share the label's line or sit just below it
+    for (var j = i; j < Math.min(i + 3, lines.length); j++) {
+      if (j > i && OTHER.test(lines[j])) break;      // ran into another field
+      var d = _parseDateToken_(lines[j]);
+      if (d) return d;
+    }
+  }
+  return null;
+}
+
+function _parseDateToken_(s) {
+  var m = String(s).match(/\b(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})\b/);
+  if (m) return _isoDate_(+m[1], +m[2], +m[3]);          // Indian d/m/y
+  m = String(s).match(/\b(\d{1,2})[-\/\s]([A-Za-z]{3})[a-z]*[-\/\s](\d{2,4})\b/);
+  if (m && MONTHS[m[2].toLowerCase()]) {
+    return _isoDate_(+m[1], MONTHS[m[2].toLowerCase()], +m[3]);
+  }
+  return null;
+}
+
+function _isoDate_(d, mo, y) {
+  if (y < 100) y += 2000;
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  var p = function (n) { return (n < 10 ? '0' : '') + n; };
+  return y + '-' + p(mo) + '-' + p(d);
+}
+
+/** The figure printed on, or just after, a labelled row. */
+function _labelledFigure_(t, labelRe) {
+  var lines = String(t || '').split(/\r?\n/);
+  for (var i = 0; i < lines.length; i++) {
+    if (!labelRe.test(lines[i])) continue;
+    var n = _amountOnLine_(lines[i]);
+    if (n !== null) return n;
+    for (var j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+      if (!lines[j].replace(/[\s\t]/g, '')) continue;
+      n = _amountOnLine_(lines[j]);
+      if (n !== null) return n;
+      break;
+    }
+  }
+  return null;
+}
+
+/** CGST + SGST amounts, when no combined "total tax" row is printed. */
+function _sumTaxHalves_(t) {
+  var c = _labelledFigure_(t, /\bc\s*gst\b/i);
+  var s = _labelledFigure_(t, /\b(s\s*gst|ut\s*gst)\b/i);
+  if (c !== null && s !== null) return c + s;
+  var i = _labelledFigure_(t, /\bi\s*gst\b/i);
+  return i;
 }
 
 /** true if the party is out-of-state relative to PM (Maharashtra, code '27') → IGST. */
@@ -240,8 +358,28 @@ var AMOUNT_LABELS = [
   /(?:sub\s*-?\s*total|taxable\s*(?:value|amount))/i
 ];
 
-/** A rupee figure: Indian lakh grouping, western grouping, or plain decimals. */
-var AMOUNT_RE = /(?:₹|rs\.?|inr)?\s*(\d{1,3}(?:,\d{2})*,\d{3}(?:\.\d{1,2})?|\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+\.\d{1,2})\b/i;
+/**
+ * A rupee figure: Indian lakh grouping, western grouping, or plain decimals.
+ * O/o and l/I are admitted inside digit groups because OCR confuses them with
+ * 0 and 1 ("7O,84O.00"); _toNumber_ repairs them before parsing.
+ */
+var AMOUNT_RE = /(?:₹|rs\.?|inr)?\s*(-?\(?\s*[\dOolI]{1,3}(?:,[\dOolI]{2})*,[\dOolI]{3}(?:\.[\dOolI]{1,2})?\)?|-?\(?\s*[\dOolI]{1,3}(?:,[\dOolI]{3})+(?:\.[\dOolI]{1,2})?\)?|-?\(?\s*[\dOolI]+\.[\dOolI]{1,2}\)?)/i;
+
+/**
+ * Money token -> number. Repairs OCR glyph confusion (O->0, l/I->1) and reads
+ * accounting negatives, so a credit note does not post as a charge.
+ */
+function _toNumber_(tok) {
+  var s = String(tok).trim();
+  var neg = /^-/.test(s) || /^\(.*\)$/.test(s);
+  s = s.replace(/[()\s-]/g, '')
+       .replace(/[Oo]/g, '0')
+       .replace(/[lI]/g, '1')
+       .replace(/,/g, '');
+  var n = parseFloat(s);
+  if (isNaN(n)) return null;
+  return neg ? -n : n;
+}
 
 /**
  * The right-most figure on a line — totals sit in the last column, while the
@@ -251,7 +389,7 @@ function _amountOnLine_(line) {
   var re = new RegExp(AMOUNT_RE.source, 'gi');
   var found = null, m;
   while ((m = re.exec(line)) !== null) {
-    var n = parseFloat(m[1].replace(/,/g, ''));
+    var n = _toNumber_(m[1]);
     if (!isNaN(n)) found = n;
   }
   return found;
@@ -306,7 +444,7 @@ function _trailingFigureBlockMax_(lines) {
   for (var i = Math.max(0, lines.length - 25); i < lines.length; i++) {
     var re = new RegExp(AMOUNT_RE.source, 'gi'), m;
     while ((m = re.exec(lines[i])) !== null) {
-      var n = parseFloat(m[1].replace(/,/g, ''));
+      var n = _toNumber_(m[1]);
       if (!isNaN(n) && n > 0) figures.push(n);
     }
   }

@@ -7,4 +7,3 @@
 // quota. Emptying the file is what actually removes that endpoint.
 //
 // Do not delete this file — it must stay (empty) to keep the cloud copy empty.
-// Trash the stub from the Apps Script editor if you want it gone entirely.

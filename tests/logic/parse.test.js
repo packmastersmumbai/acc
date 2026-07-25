@@ -487,6 +487,56 @@ test('a 2.5+2.5 pair sums to 5, not to the more common 18', () => {
   expect(ctx.parseBill('Total 100.00\nCGST 14%\nSGST 14%').gstPct).toBe(28);
 });
 
+// ── Hardening drawn from the repo's Python OCR/PDF probes (_ocr_test.py,
+// _pdf_txns.py). Those scripts already handle UTF-16 output, glyph confusion
+// and spaced digit groups; the JS parser did not.
+
+test('a space inside a digit group does not truncate the amount', () => {
+  // OCR splits "51,212.00" as "51, 212.00" -> used to parse as 212 (240x under).
+  expect(ctx.parseBill('Total\n51, 212.00').amount).toBe(51212);
+  expect(ctx.parseBill('Total\n73 332.00').amount).toBe(73332);
+});
+
+test('O-for-0 and l-for-1 glyph confusion is repaired inside numbers', () => {
+  expect(ctx.parseBill('Total\n7O,84O.00').amount).toBe(70840);
+  expect(ctx.parseBill('Total\nl2,272.00').amount).toBe(12272);
+});
+
+test('a credit note keeps its sign instead of posting as a charge', () => {
+  expect(ctx.parseBill('Total\n-5,000.00').amount).toBe(-5000);
+  expect(ctx.parseBill('Total\n(5,000.00)').amount).toBe(-5000);
+});
+
+test('invoice date is extracted in ISO form for postBill', () => {
+  expect(ctx.parseBill('Invoice Date : 06/07/2026\nTotal\n100.00').date).toBe('2026-07-06');
+  expect(ctx.parseBill('Invoice Date: 29-Apr-26\nTotal\n100.00').date).toBe('2026-04-29');
+});
+
+test('a bare "Dated" is NOT read as the invoice date', () => {
+  // On Tally layouts "Dated" belongs to the Buyer's Order column. Reading it
+  // misdated Rukson to 2026-06-27 (its PO date) instead of 4-Jul-26. No date
+  // is safer than a wrong one — postBill then falls back to today, visibly.
+  expect(ctx.parseBill('Dated\n4-Jul-26\nTotal\n100.00').date).toBe(null);
+  expect(ctx.parseBill("Buyer's Order No.\n240150\nDated\n27-Jun-26").date).toBe(null);
+});
+
+test('a date with no year context is not invented', () => {
+  expect(ctx.parseBill('Total\n100.00').date).toBe(null);
+});
+
+test('taxable and tax are returned so the total can be self-checked', () => {
+  const b = ctx.parseBill('Taxable 10,400.00\nCGST 936.00\nSGST 936.00\nTotal\n12,272.00');
+  expect(b.amount).toBe(12272);
+  expect(b.taxAmount).toBe(1872);
+  expect(b.checksOut).toBe(true);   // 10400 + 1872 === 12272
+});
+
+test('an inconsistent bill is flagged rather than silently trusted', () => {
+  // total does not equal taxable + tax -> the user must look before posting
+  const b = ctx.parseBill('Taxable 10,000.00\nCGST 936.00\nSGST 936.00\nTotal\n99,999.00');
+  expect(b.checksOut).toBe(false);
+});
+
 test('parseBill degrades gracefully on sparse text', () => {
   const b = ctx.parseBill('handwritten note');
   expect(b.gstin).toBe(null);
