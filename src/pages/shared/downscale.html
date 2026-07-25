@@ -1,0 +1,58 @@
+<!-- Shared client-side image downscaler. Include in a page via:
+       <?!= include('pages/shared/downscale') ?>
+     Zoho/Drive OCR wants images under ~2MB; phone photos are 4-10MB. This
+     redraws to a bounded canvas and steps JPEG quality down until under the cap.
+     Exposes window.downscaleImage(file, opts) -> Promise<{base64, mime, bytes}>. -->
+<script>
+(function () {
+  var MAX_BYTES = 2 * 1024 * 1024;   // 2MB target
+  var MAX_EDGE = 1600;               // px — plenty for OCR, shrinks big photos
+
+  function readAsImage(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = function (e) { URL.revokeObjectURL(url); reject(e); };
+      img.src = url;
+    });
+  }
+
+  function b64Bytes(b64) {
+    // bytes represented by a base64 string (ignoring padding growth)
+    var pad = (b64.slice(-2) === '==') ? 2 : (b64.slice(-1) === '=') ? 1 : 0;
+    return Math.floor(b64.length * 3 / 4) - pad;
+  }
+
+  // file: a File/Blob. opts.maxBytes, opts.maxEdge optional.
+  window.downscaleImage = function (file, opts) {
+    opts = opts || {};
+    var maxBytes = opts.maxBytes || MAX_BYTES;
+    var maxEdge = opts.maxEdge || MAX_EDGE;
+
+    return readAsImage(file).then(function (img) {
+      var w = img.naturalWidth, h = img.naturalHeight;
+      var scale = Math.min(1, maxEdge / Math.max(w, h));
+      var cw = Math.max(1, Math.round(w * scale));
+      var ch = Math.max(1, Math.round(h * scale));
+
+      var canvas = document.createElement('canvas');
+      canvas.width = cw; canvas.height = ch;
+      canvas.getContext('2d').drawImage(img, 0, 0, cw, ch);
+
+      var mime = 'image/jpeg';
+      var quality = 0.9;
+      var dataUrl = canvas.toDataURL(mime, quality);
+      var base64 = dataUrl.split(',')[1];
+
+      // Step quality down until under the byte cap (floor 0.4).
+      while (b64Bytes(base64) > maxBytes && quality > 0.4) {
+        quality -= 0.1;
+        dataUrl = canvas.toDataURL(mime, quality);
+        base64 = dataUrl.split(',')[1];
+      }
+      return { base64: base64, mime: mime, bytes: b64Bytes(base64) };
+    });
+  };
+})();
+</script>
