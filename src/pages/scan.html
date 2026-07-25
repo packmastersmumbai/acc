@@ -1,0 +1,157 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scan bill</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Material+Symbols+Outlined&display=swap" rel="stylesheet"/>
+<style>
+  body { font-family:'Hanken Grotesk',sans-serif; background:#fafaf9; color:#18181b; }
+  .mono { font-family:'JetBrains Mono',monospace; }
+  .hairline-b { border-bottom:1px solid #e7e5e4; }
+  .btn-primary { background:#047857; color:#fff; border-radius:4px; }
+  .btn-ghost { color:#71717a; border-radius:4px; }
+  .tag-matched { color:#047857; background:rgba(4,120,87,0.1); border-radius:4px; }
+  .tag-nomatch { color:#ba1a1a; background:rgba(186,26,26,0.08); border-radius:4px; }
+</style>
+</head>
+<body class="min-h-screen">
+<header class="flex items-center justify-between px-4 h-16 hairline-b bg-[#fafaf9] sticky top-0 z-10">
+  <button class="p-2 -ml-2" onclick="history.back()"><span class="material-symbols-outlined">chevron_left</span></button>
+  <h1 class="mono text-sm uppercase tracking-wider">Scan bill</h1>
+  <div class="w-10"></div>
+</header>
+
+<main class="px-4 py-4 pb-40 max-w-3xl mx-auto">
+  <!-- Capture -->
+  <section id="captureSection">
+    <label for="fileInput" class="w-full flex items-center p-4 border border-dashed border-[#047857]/40 rounded-lg cursor-pointer hover:bg-[#047857]/5">
+      <span class="material-symbols-outlined text-[#047857] mr-3">document_scanner</span>
+      <div>
+        <div class="text-base text-[#047857] font-semibold">Take photo or upload bill</div>
+        <div class="text-[13px] text-[#71717a]">GST · Udyam · remittance advice</div>
+      </div>
+    </label>
+    <input id="fileInput" type="file" accept="image/*" capture="environment" class="hidden"/>
+  </section>
+
+  <!-- Status host (loading/error) -->
+  <div id="statusHost" class="mt-4"></div>
+
+  <!-- Read-from-document -->
+  <section id="readSection" class="hidden mt-6">
+    <h2 class="mono text-xs text-[#71717a] uppercase tracking-widest mb-2">Read from document</h2>
+    <div class="border-t border-[#e7e5e4]">
+      <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">Supplier</span><span id="rSupplier" class="mono text-sm"></span></div>
+      <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">GSTIN</span><span id="rGstin" class="mono text-sm"></span></div>
+      <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">Invoice</span><span id="rInvoice" class="mono text-sm"></span></div>
+      <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">Amount</span><span id="rAmount" class="mono text-base"></span></div>
+    </div>
+  </section>
+
+  <!-- Matched party -->
+  <section id="matchedSection" class="hidden mt-6">
+    <h2 class="mono text-xs text-[#71717a] uppercase tracking-widest mb-2">Matched party</h2>
+    <div class="border-t border-[#e7e5e4]">
+      <div class="py-4 pl-3 pr-1 hairline-b relative">
+        <div class="absolute left-0 top-0 bottom-0 w-[2px] bg-[#047857]"></div>
+        <div class="flex justify-between items-start mb-1">
+          <span id="mName" class="mono text-sm"></span>
+          <span class="mono text-xs uppercase tag-matched px-2 py-0.5">Matched</span>
+        </div>
+        <div id="mMeta" class="mono text-xs text-[#71717a]"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- No match -->
+  <section id="noMatchSection" class="hidden mt-6">
+    <div class="p-3 tag-nomatch mono text-xs uppercase tracking-widest">No matching party found</div>
+    <h2 class="mono text-xs text-[#71717a] uppercase tracking-widest mt-4 mb-2">Create new</h2>
+    <div class="border-t border-[#e7e5e4]">
+      <button id="createVendorBtn" class="w-full flex items-center justify-between py-4 px-1 hairline-b hover:bg-[#f5f5f4]">
+        <span class="text-sm">Create supplier from this bill</span>
+        <span class="material-symbols-outlined text-[#047857]">arrow_forward</span>
+      </button>
+    </div>
+  </section>
+</main>
+
+<!-- Bottom action -->
+<div id="actionBar" class="hidden fixed bottom-0 w-full px-4 py-4 bg-[#fafaf9]/95 border-t border-[#e7e5e4]">
+  <button id="postBtn" class="w-full btn-primary py-3 mono text-sm uppercase tracking-wide">Post bill to Zoho</button>
+</div>
+
+<?!= include('pages/shared/money') ?>
+<?!= include('pages/shared/states') ?>
+<?!= include('pages/shared/downscale') ?>
+<script>
+(function () {
+  var parsed = null, matched = null;
+
+  function show(id, on) { document.getElementById(id).classList.toggle('hidden', !on); }
+  function fileToBase64(file) {
+    // downscale first, then hand back base64
+    return window.downscaleImage(file).then(function (r) { return { base64: r.base64, mime: r.mime }; });
+  }
+
+  function renderParsed(p) {
+    document.getElementById('rSupplier').textContent = p.supplier || '—';
+    document.getElementById('rGstin').textContent = p.gstin || '—';
+    document.getElementById('rInvoice').textContent = p.invoiceNo || '—';
+    document.getElementById('rAmount').textContent = p.amount != null ? inr(p.amount, { paise: true }) : '—';
+    show('readSection', true);
+  }
+
+  function renderMatch(m) {
+    if (m) {
+      document.getElementById('mName').textContent = m.contact_name;
+      document.getElementById('mMeta').textContent =
+        (m.contact_type || 'party') + ' · ' + (m.gst_no || '') + ' · ' + inr(m.outstanding || 0) + ' open';
+      show('matchedSection', true); show('noMatchSection', false);
+    } else {
+      show('noMatchSection', true); show('matchedSection', false);
+    }
+    show('actionBar', true);
+  }
+
+  function runMatch(gstin) {
+    if (!gstin) { renderMatch(null); return; }
+    google.script.run
+      .withSuccessHandler(function (m) { matched = m; renderMatch(m); })
+      .withFailureHandler(function () { renderMatch(null); })
+      .matchContactByGstin(gstin);
+  }
+
+  function onFile(file) {
+    AppStates.loading('#statusHost', 'Reading bill…');
+    fileToBase64(file).then(function (img) {
+      google.script.run
+        .withSuccessHandler(function (text) {
+          google.script.run
+            .withSuccessHandler(function (p) {
+              parsed = p; AppStates.clear('#statusHost'); renderParsed(p); runMatch(p.gstin);
+            })
+            .withFailureHandler(function () { AppStates.error('#statusHost', 'Could not parse the bill', null); })
+            .parseBill(text);
+        })
+        .withFailureHandler(function () { AppStates.error('#statusHost', 'OCR failed — try a clearer photo', null); })
+        .ocrExtract(img.base64, img.mime);
+    }).catch(function () { AppStates.error('#statusHost', 'Could not read the image', null); });
+  }
+
+  document.getElementById('fileInput').addEventListener('change', function (e) {
+    if (e.target.files && e.target.files[0]) onFile(e.target.files[0]);
+  });
+
+  document.getElementById('createVendorBtn').addEventListener('click', function () {
+    if (!parsed) return;
+    var q = 'name=' + encodeURIComponent(parsed.supplier || '') +
+            '&gstin=' + encodeURIComponent(parsed.gstin || '');
+    // In GAS the router serves party.html via ?p=party; carry parsed fields.
+    window.location.search = '?p=party&' + q;
+  });
+
+  // expose for tests to drive the flow without a real file picker
+  window.__scanOnFile = onFile;
+})();
+</script>
+</body></html>
