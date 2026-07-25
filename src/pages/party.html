@@ -1,7 +1,10 @@
 <!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>New supplier</title>
-<script>window.__appUrl = "<?= appUrl ?>"; window.__page = "<?= page ?>";</script>
+<script>window.__appUrl = "<?= appUrl ?>"; window.__page = "<?= page ?>";
+// Server-provided query params — GAS's sandbox iframe carries none in its own
+// location, so the prefill from scan (?name=&gstin=) was always lost.
+window.__qs = JSON.parse('<?!= JSON.stringify(qs) ?>');</script>
 <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Material+Symbols+Outlined&display=swap" rel="stylesheet"/>
 <style>
@@ -84,6 +87,7 @@
 <script>
 (function () {
   function qp(name) {
+    if (window.__qs && window.__qs[name]) return window.__qs[name];
     var search = window.__search || window.location.search;
     var m = new RegExp('[?&]' + name + '=([^&]*)').exec(search);
     return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : '';

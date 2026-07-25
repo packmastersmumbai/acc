@@ -1,7 +1,11 @@
 <!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Party ledger</title>
-<script>window.__appUrl = "<?= appUrl ?>"; window.__page = "<?= page ?>";</script>
+<script>window.__appUrl = "<?= appUrl ?>"; window.__page = "<?= page ?>";
+// The server is the ONLY reliable source of the query string: GAS serves this
+// page inside its own sandbox iframe, whose location carries no ?id=, so
+// window.location.search is empty and every deep link looked idless.
+window.__qs = JSON.parse('<?!= JSON.stringify(qs) ?>');</script>
 <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Material+Symbols+Outlined&display=swap" rel="stylesheet"/>
 <style>
@@ -60,7 +64,14 @@
 <?!= include('pages/shared/downscale') ?>
 <script>
 (function () {
-  function qp(name){var s=window.__search||window.location.search;var m=new RegExp('[?&]'+name+'=([^&]*)').exec(s);return m?decodeURIComponent(m[1].replace(/\+/g,' ')):'';}
+  // Server-provided params win; the location fallback is for the test harness
+  // (data: URLs), which has no server.
+  function qp(name){
+    if (window.__qs && window.__qs[name]) return window.__qs[name];
+    var s=window.__search||window.location.search;
+    var m=new RegExp('[?&]'+name+'=([^&]*)').exec(s);
+    return m?decodeURIComponent(m[1].replace(/\+/g,' ')):'';
+  }
   function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
   // No id means the user arrived from the Ledger nav tab rather than a home
   // attention row. Show a party picker — the previous fallback was a hardcoded
