@@ -228,7 +228,13 @@
 </section>
 <!-- Recent List -->
 <section>
-<h2 class="font-headline-md text-headline-md text-on-surface mb-stack-md">Needs attention</h2>
+<div class="flex items-baseline justify-between mb-stack-md">
+  <h2 class="font-headline-md text-headline-md text-on-surface">Needs attention</h2>
+  <button id="refreshBtn" class="font-label-sm text-secondary hover:text-primary flex items-center gap-1">
+    <span id="syncAge"></span>
+    <span class="material-symbols-outlined" style="font-size:16px">refresh</span>
+  </button>
+</div>
 <div id="attention"></div>
 </section>
 </main>
@@ -263,10 +269,21 @@
     if (window.wireGo) window.wireGo(host);
   }
 
-  function load() {
-    AppStates.loading('#attention', 'Loading…');
+  // Cached data is fine to SHOW as long as its age is visible — silent staleness
+  // is what causes bad decisions, not staleness itself.
+  function renderAge(iso) {
+    var el = document.getElementById('syncAge');
+    if (!iso) { el.textContent = ''; return; }
+    var mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    el.textContent = mins < 1 ? 'just now' : (mins < 60 ? mins + ' min ago'
+      : Math.floor(mins / 60) + ' hr ago');
+  }
+
+  function load(force) {
+    AppStates.loading('#attention', force ? 'Refreshing…' : 'Loading…');
     google.script.run
       .withSuccessHandler(function (d) {
+        renderAge(d.fetchedAt);
         document.getElementById('recv').textContent = inr(d.receivable);
         document.getElementById('pay').textContent = inr(d.payable);
         document.getElementById('overdue').textContent = inr(d.overdue);
@@ -274,13 +291,17 @@
         renderAttention(d.attention);
       })
       .withFailureHandler(function (e) {
-        AppStates.error('#attention', 'Could not load dashboard', load);
+        // pass a bare function: load's own arg is the force flag, and a click
+        // or error object must never be mistaken for it
+        AppStates.error('#attention', 'Could not load dashboard', function () { load(false); });
       })
-      .getHomeData();
+      .getHomeData(!!force);
   }
 
-  document.addEventListener('DOMContentLoaded', load);
-  if (document.readyState !== 'loading') load();
+  document.getElementById('refreshBtn').addEventListener('click', function () { load(true); });
+
+  document.addEventListener('DOMContentLoaded', function () { load(false); });
+  if (document.readyState !== 'loading') load(false);
 })();
 </script>
 </body></html>

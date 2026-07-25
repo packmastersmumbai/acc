@@ -10,8 +10,16 @@
  * Depends on zohoGet/zohoPost.
  */
 
-/** List all uncategorized bank txns for an account (paged). */
-function uncategorized(bankAccountId) {
+/** List all uncategorized bank txns for an account (paged, cached). */
+function uncategorized(bankAccountId, force) {
+  if (force) cacheBust('uncategorized');
+  return cachedRead('uncategorized', 300, function () {
+    return uncategorizedFresh_(bankAccountId);
+  });
+}
+
+/** Uncached — pages the whole uncategorized list (hundreds of rows). */
+function uncategorizedFresh_(bankAccountId) {
   var out = [], page = 1;
   while (true) {
     var r = zohoGet('banktransactions',
@@ -79,6 +87,8 @@ function acceptMatch(transactionId, matchObj) {
     ]
   };
   zohoPost('banktransactions/uncategorized/' + transactionId + '/match', body);
+  // this txn just left the uncategorized list and moved a balance
+  cacheBustAll();
   return { success: true, transactionId: transactionId };
 }
 

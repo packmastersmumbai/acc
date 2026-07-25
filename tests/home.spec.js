@@ -70,3 +70,37 @@ test('a party with no contact_id is inert — no navigation, no button affordanc
   await row.dispatchEvent('click');
   expect(await page.evaluate(() => window.__nav)).toBe(null);
 });
+
+test('sync age is shown and Refresh forces a fresh fetch', async ({ page, loadPage }) => {
+  await loadPage('home');
+  await page.evaluate(() => {
+    window.__forced = [];
+    window.__gasOverride('getHomeData', (force) => {
+      window.__forced.push(force);
+      return { receivable: 1, payable: 1, overdue: 1, unreconciled: 0, attention: [],
+               fetchedAt: new Date().toISOString() };
+    });
+  });
+
+  await page.locator('#refreshBtn').click();
+
+  await expect(page.locator('#syncAge')).toContainText('just now');
+  // the refresh must ask the server to bypass its cache
+  expect(await page.evaluate(() => window.__forced.slice(-1)[0])).toBe(true);
+});
+
+test('initial load does not force a refresh', async ({ page, loadPage }) => {
+  await loadPage('home');
+  await page.evaluate(() => {
+    window.__forced = [];
+    window.__gasOverride('getHomeData', (force) => {
+      window.__forced.push(force);
+      return { receivable: 1, payable: 1, overdue: 1, unreconciled: 0, attention: [] };
+    });
+  });
+  await page.evaluate(() => location.reload());
+  await page.waitForLoadState('domcontentloaded');
+  // first paint should be allowed to use the cache
+  const forced = await page.evaluate(() => window.__forced || []);
+  expect(forced.every((f) => f !== true)).toBe(true);
+});

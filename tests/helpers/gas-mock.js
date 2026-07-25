@@ -90,7 +90,7 @@ const GAS_MOCK_SCRIPT = `
       withSuccessHandler: function(h) { return makeRunner(h, fh); },
       withFailureHandler: function(h) { return makeRunner(sh, h); },
 
-      getHomeData:         function()            { dispatch('getHomeData', [], MOCK_HOME); },
+      getHomeData:         function(force)       { dispatch('getHomeData', [force], MOCK_HOME); },
       ocrExtract:          function(b64, mime)   { dispatch('ocrExtract', [b64, mime], 'TAX INVOICE\\nGSTIN 27AABFY9773F1ZN\\nYash Poly Plast\\nYPP/24-25/1182\\nTotal 1,74,378'); },
       parseBill:           function(text)        { dispatch('parseBill', [text], MOCK_PARSE); },
       matchContactByGstin: function(gstin)       { dispatch('matchContactByGstin', [gstin], gstin === '27AABFY9773F1ZN' ? MOCK_MATCH : null); },

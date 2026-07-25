@@ -16,6 +16,38 @@ function zohoProp_(key, dflt) {
   return (v === null || v === undefined) ? dflt : v;
 }
 
+/**
+ * Read-through cache for expensive Zoho reads (same helper DWM uses).
+ * Zoho data is write-rare: an invoice, once raised, seldom changes. So cache
+ * the reads and drop the key when THIS app writes — rather than re-paging
+ * hundreds of records on every screen load.
+ *
+ * CacheService is script-wide, so one user's fetch warms it for everyone.
+ */
+function cachedRead(key, ttlSeconds, reader) {
+  var cache = CacheService.getScriptCache();
+  try {
+    var hit = cache.get(key);
+    if (hit) return JSON.parse(hit);
+  } catch (e) { /* fall through and read fresh */ }
+  var fresh = reader();
+  // >100KB silently fails to store; the read still returns correctly.
+  try { cache.put(key, JSON.stringify(fresh), ttlSeconds || 300); } catch (e) {}
+  return fresh;
+}
+
+function cacheBust(key) {
+  try { CacheService.getScriptCache().remove(key); } catch (e) {}
+}
+
+/** Every cache key this app writes; kept here so cacheBustAll stays truthful. */
+var CACHE_KEYS = ['home_data', 'uncategorized'];
+
+/** Drop every cached read — call after any write that moves balances. */
+function cacheBustAll() {
+  try { CacheService.getScriptCache().removeAll(CACHE_KEYS); } catch (e) {}
+}
+
 function zohoDc_() { return zohoProp_('ZOHO_DC', 'com'); }
 function zohoApiBase_() { return 'https://www.zohoapis.' + zohoDc_() + '/books/v3'; }
 function zohoOrgId_() { return zohoProp_('ZOHO_ORG_ID', ZOHO_ORG_ID); }

@@ -70,6 +70,7 @@ function postBill(obj) {
   // verified live to exist and be writable on bills.
   if (obj.scanUrl) body.notes = 'Scanned document: ' + obj.scanUrl;
   var res = zohoPost('bills', body);
+  cacheBustAll();  // a new bill changes payable + attention
   return { success: true, bill_id: res.bill.bill_id };
 }
 

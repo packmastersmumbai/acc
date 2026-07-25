@@ -92,6 +92,7 @@ function buildContactBody(obj) {
 
 function createContact(obj) {
   var res = zohoPost('contacts', buildContactBody(obj));
+  cacheBustAll();  // new party belongs in the next home rollup
   return { success: true, contact_id: res.contact.contact_id, contact_name: res.contact.contact_name };
 }
 

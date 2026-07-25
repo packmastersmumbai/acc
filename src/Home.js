@@ -53,7 +53,13 @@ function rollupContacts(contacts) {
   return { recv: recv, pay: pay, attention: attention };
 }
 
-function getHomeData() {
+function getHomeData(force) {
+  if (force) cacheBust('home_data');
+  return cachedRead('home_data', 600, getHomeDataFresh_);
+}
+
+/** Uncached read — pages every contact, invoice and uncategorized txn. */
+function getHomeDataFresh_() {
   // receivable / payable / attention — from the contact list (carries outstanding)
   var all = [], page = 1;
   while (true) {
@@ -88,7 +94,8 @@ function getHomeData() {
              contact_id: p.contact_id, contact_ids: p.contact_ids };
   });
   return { receivable: roll.recv, payable: roll.pay, overdue: overdue,
-           unreconciled: unreconciled, attention: attention };
+           unreconciled: unreconciled, attention: attention,
+           fetchedAt: new Date().toISOString() };  // drives the "synced N ago" label
 }
 
 if (typeof module !== 'undefined' && module.exports) {

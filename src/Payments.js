@@ -30,6 +30,7 @@ function markInvoicePaid(obj) {
     invoices: [{ invoice_id: obj.invoiceId, amount_applied: balance }]
   };
   var res = zohoPost('customerpayments', body);
+  cacheBustAll();  // payment moves receivable/overdue
   return { success: true, payment_id: res.payment.payment_id, applied: balance };
 }
 
@@ -47,6 +48,7 @@ function payVendorBill(obj) {
     bills: [{ bill_id: obj.billId, amount_applied: obj.amount }]
   };
   var res = zohoPost('vendorpayments', body);
+  cacheBustAll();  // payment moves payable
   return { success: true, payment_id: res.payment.payment_id };
 }
 
