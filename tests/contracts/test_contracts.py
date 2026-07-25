@@ -93,6 +93,15 @@ def test_match_contact_by_gstin_query_works(zoho):
     assert "contact_id" in found
 
 
+def test_overdue_invoices_filter_is_status_not_filter_by(zoho):
+    """getHomeData sums overdue invoices. The param is status='overdue' (200);
+    filter_by='Status.Overdue' returns HTTP 400 (the bug that broke the live
+    dashboard). Lock the correct param."""
+    r = zoho.books("invoices", PM, per_page=5, status="overdue")
+    assert r["code"] == 0
+    assert all(i["status"] == "overdue" for i in r.get("invoices", []))
+
+
 def test_backup_modules_all_reachable(zoho):
     """Backup pages these modules; confirm each responds code 0 read-only (one
     page each, no writes) so backupNow won't hit an unknown endpoint."""

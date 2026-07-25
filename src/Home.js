@@ -49,7 +49,7 @@ function getHomeData() {
   // overdue — sum balances of overdue invoices
   var overdue = 0; page = 1;
   while (true) {
-    var ri = zohoGet('invoices', { per_page: 200, page: page, filter_by: 'Status.Overdue' });
+    var ri = zohoGet('invoices', { per_page: 200, page: page, status: 'overdue' });
     (ri.invoices || []).forEach(function (i) { overdue += parseFloat(i.balance || 0); });
     if (!ri.page_context || !ri.page_context.has_more_page) break;
     page++;
