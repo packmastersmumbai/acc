@@ -49,7 +49,7 @@ function parseBill(text) {
   // crossing, so "TAX INVOICE\nGSTIN…" can't capture the GSTIN line). The
   // "no/number/#" keyword is required to avoid matching a bare "INVOICE" header.
   var invM = t.match(/(?:invoice|bill|inv)[ \t]*(?:no\.?|number|#)[ \t]*[:\-]?[ \t]*([A-Z0-9][A-Z0-9\/\-]{2,})/i);
-  var invoiceNo = invM ? invM[1].trim() : null;
+  var invoiceNo = invM ? invM[1].trim() : _invoiceNoNearLabel_(t);
 
   // Amount: read the figure sitting on a total-ish LABEL. Never "largest number
   // on the page" — HSN codes (39231010), PIN codes and phone numbers all dwarf a
@@ -88,7 +88,29 @@ function _gstPct_(t) {
   // Fall back to a bare "18%" anywhere, then a rate near the word GST.
   var m = t.match(/\b(0|5|12|18|28)\s*%/) ||
           t.match(/(?:gst|tax)[^0-9%]{0,10}(0|5|12|18|28)\b/i);
-  return m ? parseInt(m[1], 10) : null;
+  if (m) return parseInt(m[1], 10);
+
+  // Column-wise OCR detaches every rate from its label, leaving a bare pair of
+  // equal halves ("9%" ... "9%") that the label lookups above cannot see. Two
+  // identical halves summing to a legal slab is unambiguously CGST+SGST.
+  return _halvesSum_(t, VALID);
+}
+
+/**
+ * Two identical percentages that add up to a legal GST slab — the CGST/SGST
+ * halves of an intra-state bill, after OCR stripped their labels.
+ * @return {number|null} the summed rate, or null if the halves are ambiguous.
+ */
+function _halvesSum_(t, valid) {
+  var pcts = [], re = /(\d{1,2}(?:\.\d+)?)\s*%/g, m;
+  while ((m = re.exec(String(t))) !== null) pcts.push(parseFloat(m[1]));
+  if (pcts.length < 2) return null;
+
+  // Every percentage on the page must be the SAME half; a mixed set means we
+  // cannot tell which pair belongs to the total, so refuse rather than guess.
+  var first = pcts[0];
+  for (var i = 1; i < pcts.length; i++) if (pcts[i] !== first) return null;
+  return valid[first * 2] ? first * 2 : null;
 }
 
 /** The percentage printed on the same line as a tax label, e.g. "SGST 9%". */
@@ -103,6 +125,34 @@ function _rateAfter_(t, labelRe) {
 }
 
 // ── helpers ──
+
+/** Looks like a document number: has a digit, and a separator or mixed case. */
+var INV_TOKEN_RE = /^[A-Z0-9][A-Z0-9\/\-]{3,}$/i;
+
+/**
+ * OCR of a two-column header often emits the VALUE line before its LABEL line
+ * ("RBQ/2026-27/142" then "INVOICE NO.:"), so a same-line or forward-only match
+ * finds nothing. Scan both directions around the label.
+ */
+function _invoiceNoNearLabel_(t) {
+  var lines = String(t || '').split(/\r?\n/);
+  var labelRe = /(invoice|bill)\s*(no\.?|number|#)/i;
+  for (var i = 0; i < lines.length; i++) {
+    if (!labelRe.test(lines[i])) continue;
+    // nearest non-empty neighbours: behind first (the observed OCR order), then ahead
+    var probes = [i - 1, i - 2, i + 1, i + 2];
+    for (var k = 0; k < probes.length; k++) {
+      var j = probes[k];
+      if (j < 0 || j >= lines.length) continue;
+      var ln = lines[j].trim();
+      if (!ln || !INV_TOKEN_RE.test(ln)) continue;
+      if (!/\d/.test(ln)) continue;                 // must carry a digit
+      if (/^\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4}$/.test(ln)) continue;  // a date
+      return ln;
+    }
+  }
+  return null;
+}
 
 /**
  * Total labels in descending authority. The first tier that matches wins, so a
@@ -163,7 +213,31 @@ function _labelledAmount_(t) {
     }
     if (best !== null) return best;
   }
-  return null;
+  return _trailingFigureBlockMax_(lines);
+}
+
+/**
+ * Last resort for photographed bills. When OCR reads a totals table column-wise
+ * it emits ALL the labels, then ALL the figures — so no label sits near its
+ * value and every tier above fails.
+ *
+ * In that block the grand total is the largest figure: it is the taxable value
+ * plus tax, and everything else there (tax halves, discount, round-off) is
+ * smaller by construction. Only trust it when the block is unambiguously a
+ * totals block — several money-shaped lines clustered at the end.
+ */
+function _trailingFigureBlockMax_(lines) {
+  var figures = [];
+  for (var i = Math.max(0, lines.length - 25); i < lines.length; i++) {
+    var re = new RegExp(AMOUNT_RE.source, 'gi'), m;
+    while ((m = re.exec(lines[i])) !== null) {
+      var n = parseFloat(m[1].replace(/,/g, ''));
+      if (!isNaN(n) && n > 0) figures.push(n);
+    }
+  }
+  // Fewer than 4 figures is not a totals table — refuse rather than guess.
+  if (figures.length < 4) return null;
+  return Math.max.apply(null, figures);
 }
 
 /**
@@ -183,6 +257,12 @@ function _guessSupplier_(t) {
     if (NOT_SUPPLIER_RE.test(ln)) continue;
     if (/^[\d\W]+$/.test(ln)) continue;         // pure numbers/punctuation
     if (ln.length < 3) continue;
+    // Scanner edge artifacts: a run of underscores/dashes, or a digit-heavy
+    // garble off a torn header (e.g. "LLL231 131/UD"). A real company name is
+    // overwhelmingly letters, so require most of the line to be alphabetic.
+    if (/^[_\-=~.]{3,}$/.test(ln)) continue;
+    var compact = ln.replace(/\s/g, '');
+    if (compact.replace(/[^a-z]/gi, '').length / compact.length < 0.7) continue;
 
     // The name is usually followed by its address on the same OCR line. Cut at
     // the first address-ish marker so "AEROL FORMULATIONS PRIVATE LIMITED *

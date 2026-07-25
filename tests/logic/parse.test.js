@@ -180,6 +180,96 @@ test('an intra-state bill is not flagged inter-state', () => {
   expect(ctx.interStateFrom(ctx.parseBill(RBQ).gstin.slice(0, 2))).toBe(false);
 });
 
+// VERBATIM Drive OCR output of the photographed RBQ bill (WhatsApp jpeg, 215KB).
+// Note how little structure survives: the invoice number appears BEFORE its
+// label, and every total is separated from its label by the whole terms block.
+const RBQ_OCR = [
+  '________________',
+  '',
+  'LLL231 131/UD',
+  'RBQ ENTERPRISES',
+  'Digital & Offset Print Solution',
+  'Nichem',
+  'PM26/07',
+  'OFFICE: 5120, Ganesh Nagar-02, Karanja Road,',
+  'Details of Receiver:',
+  'TAX INVOICE',
+  'RBQ/2026-27/142',
+  'INVOICE NO.:',
+  'PACK MASTERS',
+  'INVOICE DATE:',
+  '04-07-2026',
+  'STATE CODE: 27',
+  'GSTIN',
+  ':27AFGPM0888K1ZY',
+  'Consignor Name & Address:',
+  'RBQ ENTERPRISES',
+  'STATE CODE: 27',
+  'GSTIN',
+  'QUANTITY',
+  ': 27PPEPS9516F1Z6',
+  'RATE',
+  'TAXABLE VALUE',
+  '4821',
+  '1',
+  'LABEL',
+  'BUGSEAL Labels as per approved batch numbers for 2170',
+  '2170',
+  '20.00',
+  '43400.00',
+  'TOTAL INVOICE AMOUNT IN WORDS',
+  'Rupees FiftyOne Thousand Two Hundred Twelve Only',
+  'Less Discount',
+  'Total Amount Before Tax',
+  'Total After Discount',
+  'Add: SGST',
+  'Add: CGST',
+  'Add: IGST',
+  'Total Tax Amount GST',
+  'Transport Charges',
+  '1) Payment to be made by account payee cheque in favour of "RBQ ENTERPRISES"',
+  '4 working days from the date of recd. date. No changes will be entertained thereafter.',
+  'Total Invoice Amount After GST Tax',
+  'ROUND OFF',
+  'SALES ROUNDOFF',
+  '43,400.00 0.00',
+  '43,400.00',
+  '9%',
+  '3,906.00',
+  '9%',
+  '3,906.00',
+  '7,812.00',
+  '51,212.00',
+  '0.00 51,212.00',
+  'THIS IS COMPUTERIZED GENERATED INVOICE',
+].join('\n');
+
+test('RBQ photo: takes the seller gstin, never our own', () => {
+  expect(ctx.parseBill(RBQ_OCR).gstin).toBe('27PPEPS9516F1Z6');
+});
+
+test('RBQ photo: supplier is the company, not a scan-edge artifact', () => {
+  expect(ctx.parseBill(RBQ_OCR).supplier).toBe('RBQ ENTERPRISES');
+});
+
+test('RBQ photo: invoice number found even though it PRECEDES its label', () => {
+  expect(ctx.parseBill(RBQ_OCR).invoiceNo).toBe('RBQ/2026-27/142');
+});
+
+test('RBQ photo: amount is the largest total in the trailing figure block', () => {
+  expect(ctx.parseBill(RBQ_OCR).amount).toBe(51212);
+});
+
+test('RBQ photo: bare 9% + 9% is recognised as an 18% intra-state bill', () => {
+  // OCR detached every rate from its "Add: SGST"/"Add: CGST" label.
+  expect(ctx.parseBill(RBQ_OCR).gstPct).toBe(18);
+});
+
+test('mixed percentages are refused rather than guessed', () => {
+  // 9% and 6% cannot be a CGST/SGST pair — better null than a wrong tax slab.
+  expect(ctx.parseBill('Total 1,000.00\nfoo 9%\nbar 6%')).toHaveProperty('gstPct', null);
+});
+
 test('parseBill degrades gracefully on sparse text', () => {
   const b = ctx.parseBill('handwritten note');
   expect(b.gstin).toBe(null);
