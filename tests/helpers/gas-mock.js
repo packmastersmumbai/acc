@@ -81,6 +81,12 @@ const GAS_MOCK_SCRIPT = `
     ]
   };
 
+  // Parties with an open balance, for the ledger picker (listOpenParties)
+  var MOCK_PARTIES = [
+    { contact_id: '116000000618777', contact_name: 'Yash Poly Plast', contact_type: 'vendor',   side: 'vendor',   outstanding: 7723056 },
+    { contact_id: '116000000071027', contact_name: 'YARA FERTILISERS INDIA PVT. LTD.', contact_type: 'customer', side: 'customer', outstanding: 412300 }
+  ];
+
   // Backup / settings state (getBackupStatus)
   var MOCK_BACKUP_STATUS = { nightly: false, lastBackup: null, lastRecords: null };
 
@@ -135,6 +141,7 @@ const GAS_MOCK_SCRIPT = `
       removeNightlyBackup: function()            { dispatch('removeNightlyBackup', [], { nightly: false, lastBackup: null, lastRecords: null }); },
       cacheBustAll:        function()            { dispatch('cacheBustAll', [], { success: true }); },
       getOrgId:            function()            { dispatch('getOrgId', [], '661445520'); },
+      listOpenParties:     function()            { dispatch('listOpenParties', [], MOCK_PARTIES); },
       // vendor ledger is reachable via __gasOverride('getPartyLedger', ...)
       getPartyLedger:      function(id)          { dispatch('getPartyLedger', [id], id === '116000000618777' ? MOCK_LEDGER_VENDOR : MOCK_LEDGER); }
     };

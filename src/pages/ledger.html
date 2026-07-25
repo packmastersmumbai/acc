@@ -62,7 +62,10 @@
 (function () {
   function qp(name){var s=window.__search||window.location.search;var m=new RegExp('[?&]'+name+'=([^&]*)').exec(s);return m?decodeURIComponent(m[1].replace(/\+/g,' ')):'';}
   function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
-  var contactId = qp('id') || '116000000618000';
+  // No id means the user arrived from the Ledger nav tab rather than a home
+  // attention row. Show a party picker — the previous fallback was a hardcoded
+  // id that does not exist in this org, so the tab always 404'd.
+  var contactId = qp('id') || '';
   var current = null, proof = null;
   // Vendors are paid (bills), customers are collected from (invoices). The whole
   // screen — heading, button label, confirm target — follows this one flag.
@@ -155,7 +158,36 @@
     window.__lastPaid = current;
   }
 
+  function renderPartyPicker(parties) {
+    document.getElementById('partyName').textContent = 'Ledger';
+    document.getElementById('outstanding').textContent = '—';
+    document.getElementById('openHeading').textContent = 'Choose a party';
+    var host = document.getElementById('invoiceHost');
+    if (!parties || !parties.length) {
+      AppStates.empty('#invoiceHost', 'Nothing open', 'No party has an open balance.');
+      return;
+    }
+    host.innerHTML = parties.map(function (p) {
+      return '<a class="flex items-center justify-between py-3 hairline-b cursor-pointer" ' +
+        'data-go="ledger" data-go-params=\'' + JSON.stringify({ id: p.contact_id }) + '\'>' +
+        '<div><div class="mono text-sm">' + esc(p.contact_name) + '</div>' +
+        '<div class="mono text-xs text-[#71717a]">' +
+        (p.side === 'vendor' ? 'We owe them' : 'They owe us') + '</div></div>' +
+        '<span class="mono text-sm">' + inr(p.outstanding) + '</span></a>';
+    }).join('');
+    if (window.wireGo) window.wireGo(host);
+  }
+
+  function loadPicker() {
+    AppStates.loading('#invoiceHost', 'Loading parties…');
+    google.script.run
+      .withSuccessHandler(renderPartyPicker)
+      .withFailureHandler(function () { AppStates.error('#invoiceHost', 'Could not load parties', loadPicker); })
+      .listOpenParties();
+  }
+
   function load() {
+    if (!contactId) { loadPicker(); return; }
     AppStates.loading('#invoiceHost', 'Loading…');
     google.script.run
       .withSuccessHandler(function (d) {
