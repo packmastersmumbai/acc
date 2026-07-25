@@ -317,6 +317,46 @@ test('Shubh: Total beats Sub Total (under-posting is the costly error)', () => {
   expect(ctx.parseBill(SHUBH).amount).toBe(66375);
 });
 
+// VERBATIM Drive OCR of the Shubh screenshot. The logo splits across two lines
+// ("SHUBH" / "PROPACK PVT. LTD.") ABOVE the real company name, so a
+// first-qualifying-line read returns the logo fragment.
+const SHUBH_OCR = [
+  '________________',
+  '',
+  'SHUBH',
+  'PROPACK PVT. LTD.',
+  'Invoice Date',
+  'Terms',
+  'e-Way Bill#',
+  'Bill To',
+  'PACK MASTERS',
+  'SHUBH PROPACK PRIVATE LIMITED',
+  'FF/6 A-Square, Kaveri Sangam, Near Shilaj Circle, Above SBI Bank, Shilaj Ahmedabad, Gujarat-380059,India GSTIN 24ABECS3222L1ZF',
+  'Phone: 9638949869 PAN:ABECS3222L IEC:ABECS3222L',
+  ': 06/07/2026',
+  'GSTIN 27AFGPM0888K1ZY',
+  'TAX INVOICE',
+  'Invoice# INV-2627/0298',
+  'GSTIN 27AFGPM0888K1ZY',
+  'Sub Total IGST18 (18%)',
+  '56,250.00',
+  '10,125.00',
+  'Total',
+  '66,375.00',
+].join('\n');
+
+test('Shubh OCR: supplier is the full legal name, not the split logo text', () => {
+  expect(ctx.parseBill(SHUBH_OCR).supplier).toBe('SHUBH PROPACK PRIVATE LIMITED');
+});
+
+test('Shubh OCR: the other four fields survive the real OCR', () => {
+  const b = ctx.parseBill(SHUBH_OCR);
+  expect(b.gstin).toBe('24ABECS3222L1ZF');
+  expect(b.invoiceNo).toBe('INV-2627/0298');
+  expect(b.amount).toBe(66375);
+  expect(b.gstPct).toBe(18);
+});
+
 test('Shubh: supplier, invoice number and IGST rate', () => {
   const b = ctx.parseBill(SHUBH);
   expect(b.supplier).toBe('SHUBH PROPACK PRIVATE LIMITED');

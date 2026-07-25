@@ -12,6 +12,9 @@
  */
 var OWN_GSTIN = '27AFGPM0888K1ZY';
 
+/** Our own name, so a purchase bill's "Bill To" block never becomes the supplier. */
+function _isOwnName_(s) { return /pack\s*masters/i.test(s || ''); }
+
 var GSTIN_RE = /\b(\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d])\b/g;
 
 /**
@@ -248,8 +251,34 @@ function _trailingFigureBlockMax_(lines) {
 var SUPPLIER_LABEL_RE = /^(sold\s*by|seller|supplier|vendor|from|billed\s*by|sold\s*to|ship(ped)?\s*by)\s*[:\-]?\s*$/i;
 var NOT_SUPPLIER_RE = /^(tax\s+invoice|invoice|bill|gstin|gst\b|pan\b|date|no\.?|amount|total|irn|billing\s*address|shipping\s*address|place\s*of|state\/ut|order\s*number)\b/i;
 
+/**
+ * A company's legal form. A line carrying one of these is the full registered
+ * name, so it beats a bare fragment — logos routinely OCR as two lines
+ * ("SHUBH" / "PROPACK PVT. LTD.") sitting ABOVE the real name.
+ */
+var ENTITY_SUFFIX_RE = /\b(private\s+limited|pvt\.?\s*ltd|limited|ltd|llp|enterprises?|industries|corporation|corp|company|co\.|& sons|traders|packaging|udyog)\b/i;
+
 function _guessSupplier_(t) {
   var lines = t.split(/\r?\n/);
+
+  // First pass: the best full name in the header region — a line with a legal
+  // suffix that is not an address line. Bounded to the top of the document so a
+  // "For <BUYER> Ltd." footer cannot win.
+  var limit = Math.min(lines.length, 20);
+  var best = null;
+  for (var h = 0; h < limit; h++) {
+    var cand = lines[h].trim();
+    if (!cand || !ENTITY_SUFFIX_RE.test(cand)) continue;
+    if (NOT_SUPPLIER_RE.test(cand) || SUPPLIER_LABEL_RE.test(cand)) continue;
+    if (/\d{6}|gstin|phone|pan[:\s]|e-?mail|@/i.test(cand)) continue;  // address/contact line
+    if (_isOwnName_(cand)) continue;                                   // the buyer is us
+    cand = cand.split(/\s{2,}|,\s/)[0].trim();
+    // A split logo yields a FRAGMENT ("PROPACK PVT. LTD.") above the full
+    // registered name. Both carry a suffix, so prefer the longer one.
+    if (!best || cand.length > best.length) best = cand;
+  }
+  if (best) return best;
+
   for (var i = 0; i < lines.length; i++) {
     var ln = lines[i].trim();
     if (!ln) continue;
