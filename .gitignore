@@ -29,3 +29,5 @@ playwright/.cache/
 .env
 *.token
 /.stitch-src/
+/src/_bootstrap.js
+/src/_setup.js
