@@ -1,7 +1,23 @@
-<!-- Shared navigation. In GAS the app runs in a sandboxed iframe, so page changes
-     must use top.location with the real web-app URL (window.__appUrl, set from
-     <?= appUrl ?>). Include via <?!= include('pages/shared/nav') ?> and set
-     window.__appUrl BEFORE this runs. Exposes window.go(page, params). -->
+<!-- Shared navigation + bottom nav bar. In GAS the app runs in a sandboxed iframe,
+     so page changes must use top.location with the real web-app URL
+     (window.__appUrl, set from <?= appUrl ?>). Include via
+     <?!= include('pages/shared/nav') ?> and set window.__appUrl BEFORE this runs.
+     Exposes window.go(page, params) and injects a consistent bottom nav on every
+     page that includes it — so navigation is present on ALL pages, present and
+     future, with zero per-page markup. -->
+<style>
+  #pm-nav { position:fixed; bottom:0; left:0; width:100%; z-index:60;
+            display:flex; justify-content:space-around; align-items:center;
+            height:64px; background:#fafaf9; border-top:1px solid #e7e5e4;
+            font-family:'JetBrains Mono',monospace; padding-bottom:env(safe-area-inset-bottom,0); }
+  #pm-nav a { display:flex; flex-direction:column; align-items:center; gap:2px;
+              color:#71717a; font-size:10px; letter-spacing:.05em; text-transform:uppercase;
+              cursor:pointer; padding:6px 10px; border-radius:6px; text-decoration:none; }
+  #pm-nav a .material-symbols-outlined { font-size:22px; }
+  #pm-nav a.active { color:#047857; background:rgba(4,120,87,0.08); }
+  /* keep page content clear of the fixed bar */
+  body { padding-bottom:76px; }
+</style>
 <script>
 (function () {
   window.go = function (page, params) {
@@ -24,9 +40,39 @@
     var url = base ? (base + '?' + qs) : ('?' + qs);
     try { window.top.location.href = url; } catch (e) { window.location.href = url; }
   };
-  // Wire any element with data-go="pageName" (optional data-go-params='{"k":"v"}').
-  document.addEventListener('DOMContentLoaded', function () {
-    Array.prototype.forEach.call(document.querySelectorAll('[data-go]'), function (el) {
+  // Which page are we on? (from ?p= on either the wrapper or the app frame)
+  function currentPage() {
+    var s = '';
+    try { s = window.top.location.search || ''; } catch (e) {}
+    if (!s) s = window.__search || window.location.search || '';
+    var m = /[?&]p=([^&]*)/.exec(s);
+    return m ? decodeURIComponent(m[1]) : 'home';
+  }
+
+  // The nav items. Add a new screen here once and every page shows it.
+  var NAV = [
+    { page: 'home',      label: 'Home',      icon: 'home' },
+    { page: 'scan',      label: 'Scan',      icon: 'qr_code_scanner' },
+    { page: 'reconcile', label: 'Reconcile', icon: 'account_balance' },
+    { page: 'ledger',    label: 'Ledger',    icon: 'receipt_long' }
+  ];
+
+  function injectNav() {
+    if (document.getElementById('pm-nav')) return; // already present
+    var cur = currentPage();
+    var nav = document.createElement('nav');
+    nav.id = 'pm-nav';
+    nav.innerHTML = NAV.map(function (it) {
+      var active = (it.page === cur) ? ' active' : '';
+      return '<a class="' + active.trim() + '" data-go="' + it.page + '">' +
+        '<span class="material-symbols-outlined">' + it.icon + '</span>' + it.label + '</a>';
+    }).join('');
+    document.body.appendChild(nav);
+  }
+
+  function wireGo(root) {
+    Array.prototype.forEach.call((root || document).querySelectorAll('[data-go]'), function (el) {
+      if (el.__goWired) return; el.__goWired = true;
       el.addEventListener('click', function (ev) {
         ev.preventDefault();
         var p = null;
@@ -34,6 +80,12 @@
         window.go(el.getAttribute('data-go'), p);
       });
     });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    injectNav();     // consistent bottom nav on every page
+    wireGo();        // wire all [data-go] (page's own + the injected nav)
   });
+  if (document.readyState !== 'loading') { injectNav(); wireGo(); }
 })();
 </script>

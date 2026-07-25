@@ -13,7 +13,19 @@
   .btn-ghost { color:#71717a; border:1px solid #e7e5e4; border-radius:4px; }
   .tag { color:#047857; background:rgba(4,120,87,0.1); border-radius:4px; }
   .bar { height:4px; background:#e7e5e4; border-radius:9999px; overflow:hidden; }
-  .bar > div { height:100%; background:#047857; }
+  .bar > div { height:100%; background:#047857; transition:width .2s; }
+  /* row + action tiles */
+  .rc-row { display:flex; align-items:center; gap:12px; padding:10px 4px; border-bottom:1px solid #e7e5e4; }
+  .rc-row.done { opacity:.4; }
+  .rc-main { flex:1; min-width:0; }
+  .rc-narr { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tile { border-radius:4px; padding:8px 12px; font-size:11px; letter-spacing:.05em;
+          text-transform:uppercase; cursor:pointer; font-family:'JetBrains Mono',monospace; }
+  .tile-skip   { color:#71717a; border:1px solid #e7e5e4; background:#fff; }
+  .tile-skip:hover { background:#f5f5f4; }
+  .tile-accept { color:#fff; background:#047857; border:1px solid #047857; }
+  .tile-accept:disabled { background:#a7d7c5; border-color:#a7d7c5; cursor:not-allowed; }
+  .amt-credit { color:#047857; } .amt-debit { color:#18181b; }
 </style>
 </head>
 <body class="min-h-screen">
@@ -23,19 +35,19 @@
   <div class="w-10"></div>
 </header>
 
-<main class="max-w-3xl mx-auto px-4 py-4">
+<main class="max-w-5xl mx-auto px-4 py-4">
   <div class="flex items-center justify-between mb-2">
     <span id="progressLabel" class="mono text-xs uppercase text-[#71717a]">—</span>
+    <span id="pageLabel" class="mono text-xs uppercase text-[#71717a]"></span>
   </div>
-  <div class="bar mb-6"><div id="progressBar" style="width:0%"></div></div>
+  <div class="bar mb-4"><div id="progressBar" style="width:0%"></div></div>
 
-  <div id="cardHost"></div>
+  <div id="rowHost"></div>
 
-  <div id="actions" class="hidden fixed bottom-0 w-full left-0 px-4 py-4 bg-[#fafaf9]/95 border-t border-[#e7e5e4]">
-    <div class="max-w-3xl mx-auto flex gap-3">
-      <button id="skipBtn" class="flex-1 btn-ghost py-3 mono text-sm uppercase">Skip</button>
-      <button id="acceptBtn" class="flex-1 btn-primary py-3 mono text-sm uppercase" disabled title="Accept is disabled until the categorize spike is resolved">Accept</button>
-    </div>
+  <div id="pager" class="hidden flex items-center justify-between mt-4 pb-8">
+    <button id="prevBtn" class="btn-ghost px-4 py-2 mono text-xs uppercase">Prev 200</button>
+    <span id="pagerLabel" class="mono text-xs text-[#71717a]"></span>
+    <button id="nextBtn" class="btn-primary px-4 py-2 mono text-xs uppercase">Next 200</button>
   </div>
 </main>
 
@@ -45,70 +57,96 @@
 <script>
 (function () {
   // Accept is feature-flagged OFF until the acceptMatch POST body is resolved
-  // (gated spike). The button stays disabled; Skip advances the queue.
+  // (gated spike). Accept tiles render disabled; Skip marks a row reviewed.
   var ACCEPT_ENABLED = false;
   var AXIS = '1161923000000540009';
-  var queue = [], idx = 0;
+  var PAGE_SIZE = 200;
+  var all = [];      // every uncategorized txn
+  var reviewed = {}; // transactionId -> true once skipped/accepted
+  var page = 0;      // 0-based page of 200
 
   function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
 
   function renderProgress() {
-    var total = queue.length, done = idx;
+    var total = all.length;
+    var done = Object.keys(reviewed).length;
     document.getElementById('progressLabel').textContent =
       total ? (done + ' of ' + total + ' reviewed') : 'Nothing to reconcile';
     document.getElementById('progressBar').style.width = total ? Math.round(done / total * 100) + '%' : '0%';
   }
 
-  function renderCard() {
-    var host = document.getElementById('cardHost');
-    if (idx >= queue.length) {
-      document.getElementById('actions').classList.add('hidden');
-      AppStates.empty('#cardHost', 'All caught up', 'No more uncategorized transactions.');
+  function pageSlice() {
+    var start = page * PAGE_SIZE;
+    return all.slice(start, start + PAGE_SIZE);
+  }
+
+  function renderRows() {
+    var host = document.getElementById('rowHost');
+    if (!all.length) {
+      document.getElementById('pager').classList.add('hidden');
+      AppStates.empty('#rowHost', 'Nothing to reconcile', 'No uncategorized transactions.');
       renderProgress();
       return;
     }
-    var t = queue[idx];
-    document.getElementById('actions').classList.remove('hidden');
-    host.innerHTML =
-      '<div class="hairline-b pb-4 mb-4">' +
-      '<div class="mono text-xs uppercase text-[#71717a]">' + esc(t.date) + ' · ' + esc(t.type) + '</div>' +
-      '<div class="mono text-2xl mt-1">' + inr(t.amount) + '</div>' +
-      '<div class="text-sm text-[#71717a] mt-2">' + esc(t.narration) + '</div></div>' +
-      '<div id="suggestHost"></div>';
+    var rows = pageSlice();
+    host.innerHTML = rows.map(function (t) {
+      var isDone = !!reviewed[t.transactionId];
+      var amtCls = t.type === 'credit' ? 'amt-credit' : 'amt-debit';
+      var acceptDis = ACCEPT_ENABLED ? '' : 'disabled title="Accept is disabled until the categorize spike is resolved"';
+      return '<div class="rc-row' + (isDone ? ' done' : '') + '" data-id="' + esc(t.transactionId) + '">' +
+        '<div class="rc-main">' +
+          '<div class="flex items-baseline gap-2">' +
+            '<span class="mono text-sm ' + amtCls + '">' + inr(t.amount) + '</span>' +
+            '<span class="mono text-xs text-[#71717a] uppercase">' + esc(t.type) + '</span>' +
+            '<span class="mono text-xs text-[#71717a]">' + esc(t.date) + '</span>' +
+          '</div>' +
+          '<div class="rc-narr text-xs text-[#71717a] mt-0.5">' + esc(t.narration) + '</div>' +
+        '</div>' +
+        '<button class="tile tile-skip" data-act="skip">Skip</button>' +
+        '<button class="tile tile-accept" data-act="accept" ' + acceptDis + '>Accept</button>' +
+      '</div>';
+    }).join('');
+
+    // per-row tile handlers
+    Array.prototype.forEach.call(host.querySelectorAll('.rc-row'), function (rowEl) {
+      var id = rowEl.getAttribute('data-id');
+      rowEl.querySelector('[data-act="skip"]').addEventListener('click', function () {
+        reviewed[id] = true; rowEl.classList.add('done'); renderProgress();
+      });
+      var acc = rowEl.querySelector('[data-act="accept"]');
+      acc.addEventListener('click', function () {
+        if (!ACCEPT_ENABLED) return; // hard guard
+        reviewed[id] = true; rowEl.classList.add('done'); renderProgress();
+        // acceptMatch(id, ...) wired here once the spike resolves
+      });
+    });
+
+    renderPager();
     renderProgress();
-    loadSuggestion(t);
   }
 
-  function loadSuggestion(t) {
-    AppStates.loading('#suggestHost', 'Finding a match…');
-    google.script.run
-      .withSuccessHandler(function (m) {
-        if (!m) { AppStates.empty('#suggestHost', 'No suggested match', 'Skip or categorize manually in Zoho.'); return; }
-        document.getElementById('suggestHost').innerHTML =
-          '<div class="mono text-xs uppercase text-[#71717a] mb-2">Suggested match</div>' +
-          '<div class="flex justify-between items-center py-3 hairline-b">' +
-          '<div><div class="mono text-sm">' + esc(m.label || m.id) + '</div>' +
-          '<div class="mono text-xs text-[#71717a]">' + esc(m.type || '') + '</div></div>' +
-          '<span class="mono text-xs uppercase tag px-2 py-0.5">' + esc(m.confidence) + '</span></div>';
-        if (ACCEPT_ENABLED) document.getElementById('acceptBtn').disabled = false;
-      })
-      .withFailureHandler(function () { AppStates.error('#suggestHost', 'Could not fetch a match', function(){ loadSuggestion(t); }); })
-      .suggestMatch(t);
+  function renderPager() {
+    var total = all.length, pages = Math.ceil(total / PAGE_SIZE);
+    var pager = document.getElementById('pager');
+    if (pages <= 1) { pager.classList.add('hidden'); document.getElementById('pageLabel').textContent = total + ' rows'; return; }
+    pager.classList.remove('hidden');
+    var start = page * PAGE_SIZE + 1, end = Math.min((page + 1) * PAGE_SIZE, total);
+    document.getElementById('pageLabel').textContent = start + '–' + end + ' of ' + total;
+    document.getElementById('pagerLabel').textContent = 'Page ' + (page + 1) + ' / ' + pages;
+    document.getElementById('prevBtn').disabled = page === 0;
+    document.getElementById('nextBtn').disabled = page >= pages - 1;
   }
 
-  function advance() { idx++; renderCard(); }
-
-  document.getElementById('skipBtn').addEventListener('click', advance);
-  document.getElementById('acceptBtn').addEventListener('click', function () {
-    if (!ACCEPT_ENABLED) return; // hard guard even if enabled by DOM tampering
-    advance();
+  document.getElementById('prevBtn').addEventListener('click', function () { if (page > 0) { page--; renderRows(); window.scrollTo(0,0); } });
+  document.getElementById('nextBtn').addEventListener('click', function () {
+    if (page < Math.ceil(all.length / PAGE_SIZE) - 1) { page++; renderRows(); window.scrollTo(0,0); }
   });
 
   function load() {
-    AppStates.loading('#cardHost', 'Loading queue…');
+    AppStates.loading('#rowHost', 'Loading transactions…');
     google.script.run
-      .withSuccessHandler(function (list) { queue = list || []; idx = 0; renderCard(); })
-      .withFailureHandler(function () { AppStates.error('#cardHost', 'Could not load transactions', load); })
+      .withSuccessHandler(function (list) { all = list || []; page = 0; reviewed = {}; renderRows(); })
+      .withFailureHandler(function () { AppStates.error('#rowHost', 'Could not load transactions', load); })
       .uncategorized(AXIS);
   }
 
