@@ -81,8 +81,11 @@
     window.addEventListener('message', function (ev) {
       var d = ev.data;
       if (!d || d.type !== 'pm-nav' || typeof d.qs !== 'string') return;
-      // only accept navigation from the app frame we ourselves loaded
-      if (ev.source !== app.contentWindow) return;
+      // Accept only from Google's origins. NOTE: the sender is the page inside
+      // GAS's OWN sandbox frame (googleusercontent), a GRANDCHILD of this
+      // window — not app.contentWindow — so an identity check against the
+      // direct child would reject every real navigation.
+      if (!/^https:\/\/([a-z0-9-]+\.)*(google\.com|googleusercontent\.com)$/.test(ev.origin)) return;
 
       // Rebuild the query string from a whitelist rather than trusting it: the
       // value is concatenated into an iframe src, so an unchecked string is a
