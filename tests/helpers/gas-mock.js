@@ -53,6 +53,16 @@ const GAS_MOCK_SCRIPT = `
     invoiceNo: 'YPP/24-25/1182', amount: 174378, gstPct: 18
   };
 
+  // Party ledger (getPartyLedger): open invoices for a customer.
+  var MOCK_LEDGER = {
+    contact_name: 'YARA FERTILISERS INDIA PVT. LTD.',
+    outstanding: 412300,
+    invoices: [
+      { invoice_id: '116000000618057', invoice_number: 'INV-002841', date: '2026-03-31', balance: 195511, status: 'overdue' },
+      { invoice_id: '116000000618099', invoice_number: 'INV-002902', date: '2026-04-20', balance: 216789, status: 'sent' }
+    ]
+  };
+
   // Per-test overrides: window.__gasOverride('parseBill', fn) makes the mock
   // return whatever fn(...args) returns for that method. Cleared on reload.
   window.__gasOverrides = window.__gasOverrides || {};
@@ -84,7 +94,8 @@ const GAS_MOCK_SCRIPT = `
       acceptMatch:         function(txnId, m)    { dispatch('acceptMatch', [txnId, m], { success: true }); },
       attachToInvoice:     function(id, b64, n, mime) { dispatch('attachToInvoice', [id, b64, n, mime], { success: true, documentId: '116000000055555' }); },
       fileDocument:        function(b64, n, mime, folder) { dispatch('fileDocument', [b64, n, mime, folder], { fileId: 'drive-file-123', url: 'https://drive.google.com/file/d/drive-file-123' }); },
-      backupNow:           function()            { dispatch('backupNow', [], { records: 5856, driveFileId: 'backup-2026-07-25' }); }
+      backupNow:           function()            { dispatch('backupNow', [], { records: 5856, driveFileId: 'backup-2026-07-25' }); },
+      getPartyLedger:      function(id)          { dispatch('getPartyLedger', [id], MOCK_LEDGER); }
     };
   }
 

@@ -1,0 +1,139 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Party ledger</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Material+Symbols+Outlined&display=swap" rel="stylesheet"/>
+<style>
+  body { font-family:'Hanken Grotesk',sans-serif; background:#fafaf9; color:#18181b; }
+  .mono { font-family:'JetBrains Mono',monospace; }
+  .hairline-b { border-bottom:1px solid #e7e5e4; }
+  .btn-primary { background:#047857; color:#fff; border-radius:4px; }
+  .btn-ghost { color:#71717a; border:1px solid #e7e5e4; border-radius:4px; }
+  .pill-overdue { color:#ba1a1a; background:rgba(186,26,26,0.08); border-radius:4px; }
+  .pill-open { color:#047857; background:rgba(4,120,87,0.1); border-radius:4px; }
+  .sheet { position:fixed; inset:0; background:rgba(0,0,0,0.4); display:none; align-items:flex-end; z-index:50; }
+  .sheet.open { display:flex; }
+  .sheet-body { background:#fafaf9; width:100%; border-top-left-radius:12px; border-top-right-radius:12px; padding:20px; }
+</style>
+</head>
+<body class="min-h-screen">
+<header class="flex items-center justify-between px-4 h-16 hairline-b bg-[#fafaf9] sticky top-0 z-10">
+  <button class="p-2 -ml-2" onclick="history.back()"><span class="material-symbols-outlined">chevron_left</span></button>
+  <div id="partyName" class="mono text-sm uppercase tracking-wider font-bold truncate px-2">Ledger</div>
+  <div class="w-10"></div>
+</header>
+
+<main class="max-w-3xl mx-auto px-4 py-4">
+  <section class="mb-6">
+    <div class="mono text-xs uppercase text-[#71717a]">Outstanding</div>
+    <div id="outstanding" class="mono text-3xl mt-1">—</div>
+  </section>
+  <h2 class="mono text-xs uppercase text-[#71717a] tracking-widest mb-2">Open invoices</h2>
+  <div id="invoiceHost"></div>
+</main>
+
+<!-- Mark-paid capture sheet -->
+<div id="sheet" class="sheet">
+  <div class="sheet-body max-w-3xl mx-auto">
+    <div class="mono text-xs uppercase text-[#71717a]">Mark paid</div>
+    <div id="sheetInv" class="mono text-lg mt-1 mb-1"></div>
+    <div id="sheetAmt" class="mono text-2xl mb-4"></div>
+    <label for="proofInput" class="w-full flex items-center p-3 border border-dashed border-[#047857]/40 rounded-lg cursor-pointer mb-4">
+      <span class="material-symbols-outlined text-[#047857] mr-2">attach_file</span>
+      <span id="proofLabel" class="text-sm text-[#047857]">Attach payment proof (optional)</span>
+    </label>
+    <input id="proofInput" type="file" accept="image/*" class="hidden"/>
+    <div id="sheetStatus" class="mb-3"></div>
+    <div class="flex gap-3">
+      <button id="cancelBtn" class="flex-1 btn-ghost py-3 mono text-sm uppercase">Cancel</button>
+      <button id="confirmBtn" class="flex-1 btn-primary py-3 mono text-sm uppercase">Confirm paid</button>
+    </div>
+  </div>
+</div>
+
+<?!= include('pages/shared/money') ?>
+<?!= include('pages/shared/states') ?>
+<?!= include('pages/shared/downscale') ?>
+<script>
+(function () {
+  function qp(name){var s=window.__search||window.location.search;var m=new RegExp('[?&]'+name+'=([^&]*)').exec(s);return m?decodeURIComponent(m[1].replace(/\+/g,' ')):'';}
+  function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
+  var contactId = qp('id') || '116000000618000';
+  var current = null, proof = null;
+
+  function renderInvoices(inv) {
+    var host = document.getElementById('invoiceHost');
+    if (!inv || !inv.length) { AppStates.empty('#invoiceHost', 'No open invoices', 'This party is settled.'); return; }
+    host.innerHTML = inv.map(function (i) {
+      var pill = i.status === 'overdue' ? 'pill-overdue' : 'pill-open';
+      return '<div class="flex items-center justify-between py-3 hairline-b">' +
+        '<div><div class="mono text-sm">' + esc(i.invoice_number) + '</div>' +
+        '<div class="mono text-xs text-[#71717a]">' + esc(i.date) +
+        ' · <span class="' + pill + ' px-1.5 py-0.5 uppercase">' + esc(i.status) + '</span></div></div>' +
+        '<div class="flex items-center gap-3"><span class="mono text-sm">' + inr(i.balance) + '</span>' +
+        '<button class="markBtn btn-primary px-3 py-1.5 mono text-xs uppercase" ' +
+        'data-id="' + esc(i.invoice_id) + '" data-num="' + esc(i.invoice_number) + '" data-bal="' + i.balance + '">Mark paid</button></div></div>';
+    }).join('');
+    Array.prototype.forEach.call(host.querySelectorAll('.markBtn'), function (b) {
+      b.addEventListener('click', function () { openSheet(b.dataset.id, b.dataset.num, parseFloat(b.dataset.bal)); });
+    });
+  }
+
+  function openSheet(id, num, bal) {
+    current = { id: id, num: num, bal: bal }; proof = null;
+    document.getElementById('sheetInv').textContent = num;
+    document.getElementById('sheetAmt').textContent = inr(bal);
+    document.getElementById('proofLabel').textContent = 'Attach payment proof (optional)';
+    AppStates.clear('#sheetStatus');
+    document.getElementById('sheet').classList.add('open');
+  }
+  function closeSheet(){ document.getElementById('sheet').classList.remove('open'); }
+
+  document.getElementById('cancelBtn').addEventListener('click', closeSheet);
+  document.getElementById('proofInput').addEventListener('change', function (e) {
+    if (!e.target.files || !e.target.files[0]) return;
+    window.downscaleImage(e.target.files[0]).then(function (r) {
+      proof = r; document.getElementById('proofLabel').textContent = 'Proof attached ✓';
+    });
+  });
+
+  document.getElementById('confirmBtn').addEventListener('click', function () {
+    if (!current) return;
+    AppStates.loading('#sheetStatus', 'Recording payment…');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        // optional attachment after the payment is recorded
+        if (proof) {
+          google.script.run
+            .withSuccessHandler(function(){ finishPaid(); })
+            .withFailureHandler(function(){ finishPaid(); }) // payment succeeded; attach is best-effort
+            .attachToInvoice(current.id, proof.base64, 'proof.jpg', proof.mime);
+        } else { finishPaid(); }
+      })
+      .withFailureHandler(function () { AppStates.error('#sheetStatus', 'Could not record payment', null); })
+      .markInvoicePaid({ invoiceId: current.id });
+  });
+
+  function finishPaid() {
+    closeSheet();
+    load(); // refresh ledger
+    window.__lastPaid = current;
+  }
+
+  function load() {
+    AppStates.loading('#invoiceHost', 'Loading…');
+    google.script.run
+      .withSuccessHandler(function (d) {
+        document.getElementById('partyName').textContent = d.contact_name;
+        document.getElementById('outstanding').textContent = inr(d.outstanding);
+        renderInvoices(d.invoices);
+      })
+      .withFailureHandler(function () { AppStates.error('#invoiceHost', 'Could not load ledger', load); })
+      .getPartyLedger(contactId);
+  }
+
+  document.addEventListener('DOMContentLoaded', load);
+  if (document.readyState !== 'loading') load();
+})();
+</script>
+</body></html>
