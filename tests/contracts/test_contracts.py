@@ -66,6 +66,33 @@ def test_all_six_tax_ids_resolve(zoho):
     assert taxes["1161923000000062093"] == ("IGST0", 0)
 
 
+def test_match_contact_by_gstin_query_works(zoho):
+    """matchContactByGstin pages the contact LIST and compares gst_no. Prove the
+    approach live, read-only: take a real vendor's gst_no, then confirm scanning
+    the list finds a contact with that exact gst_no."""
+    vendor = next(
+        c for c in zoho.books("contacts", PM, contact_type="vendor", per_page=200)["contacts"]
+        if c.get("gst_no")
+    )
+    want = vendor["gst_no"].upper()
+
+    found = None
+    page = 1
+    while found is None:
+        r = zoho.books("contacts", PM, per_page=200, page=page)
+        for c in r["contacts"]:
+            if (c.get("gst_no") or "").upper() == want:
+                found = c
+                break
+        if not r["page_context"].get("has_more_page"):
+            break
+        page += 1
+
+    assert found is not None
+    assert found["gst_no"].upper() == want
+    assert "contact_id" in found
+
+
 def test_match_discovery_endpoint_returns_code_zero(zoho):
     """suggestMatch reads banktransactions/uncategorized/{id}/match — READ only;
     the POST accept body is a gated spike, never exercised here."""
