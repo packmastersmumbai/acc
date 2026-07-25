@@ -43,10 +43,42 @@ test('parseBill extracts supplier, gstin, invoice no, amount, gst%', () => {
   expect(b.supplier).toBe('Yash Poly Plast');
 });
 
-test('parseBill picks the largest figure as the total', () => {
+test('parseBill prefers a labelled total over a larger stray figure', () => {
   const b = ctx.parseBill('Qty 5\nRate 200\nSubtotal 1,000\nGST 18%\nTotal 1,180');
   expect(b.amount).toBe(1180);
   expect(b.gstPct).toBe(18);
+});
+
+// A real bill is full of long digit strings that dwarf the total. Largest-wins
+// picks the HSN code or the PIN, silently posting a wrong amount to Zoho.
+test('parseBill ignores HSN codes, PIN codes and phone numbers', () => {
+  const ocr = [
+    'Yash Poly Plast',
+    'Plot 44, MIDC Andheri, Mumbai 400093',
+    'Phone 9820044556',
+    'GSTIN 27AABFY9773F1ZN',
+    'Invoice No: YPP/24-25/1182',
+    'HSN 39231010   Qty 500   Rate 24.50',
+    'Grand Total  12,250.00',
+  ].join('\n');
+  const b = ctx.parseBill(ocr);
+  expect(b.amount).toBe(12250);
+});
+
+test('parseBill takes the grand total, not the larger subtotal line', () => {
+  // "Taxable value" can exceed the grand total on a credit-note-adjusted bill.
+  const b = ctx.parseBill('Taxable Value 99,000.00\nRound Off -0.40\nGrand Total 8,500.00');
+  expect(b.amount).toBe(8500);
+});
+
+test('parseBill reads an amount written in the Indian lakh grouping', () => {
+  const b = ctx.parseBill('Invoice No: A/1\nAmount Payable  1,74,378.00');
+  expect(b.amount).toBe(174378);
+});
+
+test('parseBill returns null amount when no figure is labelled', () => {
+  // Better to make the user type it than to guess and post a wrong bill.
+  expect(ctx.parseBill('HSN 39231010\nPIN 400093').amount).toBe(null);
 });
 
 test('parseBill degrades gracefully on sparse text', () => {
