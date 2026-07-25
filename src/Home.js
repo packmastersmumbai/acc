@@ -14,8 +14,14 @@ function normParty(s) { return (s || '').toUpperCase().replace(/\s+/g, ' ').trim
 
 /**
  * Merge contacts into one entry per normalized name, summing outstanding.
- * Pure — unit-tested. contacts: [{contact_name, outstanding_receivable_amount,
- * outstanding_payable_amount}]. Returns {recv, pay, attention:[{name,amount}]}.
+ * Pure — unit-tested. contacts: [{contact_id, contact_name,
+ * outstanding_receivable_amount, outstanding_payable_amount}].
+ *
+ * A merged row can span SEVERAL real Zoho contacts (casing duplicates), each
+ * with its own contact_id. All are kept in contact_ids; contact_id is the one
+ * with the largest balance — the row's click target, since that is the record
+ * carrying most of the money. Returns
+ * {recv, pay, attention:[{name, amount, contact_id, contact_ids}]}.
  */
 function rollupContacts(contacts) {
   var recv = 0, pay = 0, byParty = {};
@@ -26,11 +32,23 @@ function rollupContacts(contacts) {
     var bal = ro + po;
     if (bal > 0) {
       var k = normParty(c.contact_name);
-      if (!byParty[k]) byParty[k] = { name: c.contact_name, amount: 0 };
-      byParty[k].amount += bal;
+      if (!byParty[k]) {
+        byParty[k] = { name: c.contact_name, amount: 0,
+                       contact_id: '', contact_ids: [], _topBal: -1 };
+      }
+      var e = byParty[k];
+      e.amount += bal;
+      if (c.contact_id) {
+        e.contact_ids.push(c.contact_id);
+        if (bal > e._topBal) { e._topBal = bal; e.contact_id = c.contact_id; }
+      }
     }
   });
-  var attention = Object.keys(byParty).map(function (k) { return byParty[k]; })
+  var attention = Object.keys(byParty).map(function (k) {
+      var e = byParty[k];
+      return { name: e.name, amount: e.amount,
+               contact_id: e.contact_id, contact_ids: e.contact_ids };
+    })
     .sort(function (a, b) { return b.amount - a.amount; });
   return { recv: recv, pay: pay, attention: attention };
 }
@@ -66,7 +84,8 @@ function getHomeData() {
   }
 
   var attention = roll.attention.slice(0, 8).map(function (p) {
-    return { name: p.name, gap: '', amount: p.amount, overdue: false };
+    return { name: p.name, gap: '', amount: p.amount, overdue: false,
+             contact_id: p.contact_id, contact_ids: p.contact_ids };
   });
   return { receivable: roll.recv, payable: roll.pay, overdue: overdue,
            unreconciled: unreconciled, attention: attention };

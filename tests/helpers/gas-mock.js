@@ -19,9 +19,13 @@ const GAS_MOCK_SCRIPT = `
     overdue: 8912040,
     unreconciled: 517,
     attention: [
-      { name: 'Yash Poly Plast',   gap: '34 bills unpaid',      amount: 7723056,  overdue: true  },
-      { name: 'Henkel Adhesives',  gap: '146 draft challans',   amount: 66625859, overdue: false },
-      { name: 'Dorf Ketal',        gap: '3 void invoices carry balance', amount: 61236, overdue: false }
+      { name: 'Yash Poly Plast',   gap: '34 bills unpaid',      amount: 7723056,  overdue: true,
+        contact_id: '116000000618000', contact_ids: ['116000000618000'] },
+      { name: 'Henkel Adhesives',  gap: '146 draft challans',   amount: 66625859, overdue: false,
+        contact_id: '116000000618111', contact_ids: ['116000000618111'] },
+      // no contact_id — a party Zoho gave us no id for; must render inert
+      { name: 'Dorf Ketal',        gap: '3 void invoices carry balance', amount: 61236, overdue: false,
+        contact_id: '', contact_ids: [] }
     ]
   };
 
@@ -93,6 +97,7 @@ const GAS_MOCK_SCRIPT = `
       suggestMatch:        function(txn)         { dispatch('suggestMatch', [txn], MOCK_SUGGEST); },
       acceptMatch:         function(txnId, m)    { dispatch('acceptMatch', [txnId, m], { success: true }); },
       attachToInvoice:     function(id, b64, n, mime) { dispatch('attachToInvoice', [id, b64, n, mime], { success: true, documentId: '116000000055555' }); },
+      archiveScan:         function(b64, mime, sup) { dispatch('archiveScan', [b64, mime, sup], { fileId: '1ArCh1V3', url: 'https://drive.google.com/file/d/1ArCh1V3/view' }); },
       fileDocument:        function(b64, n, mime, folder) { dispatch('fileDocument', [b64, n, mime, folder], { fileId: 'drive-file-123', url: 'https://drive.google.com/file/d/drive-file-123' }); },
       backupNow:           function()            { dispatch('backupNow', [], { records: 5856, driveFileId: 'backup-2026-07-25' }); },
       getPartyLedger:      function(id)          { dispatch('getPartyLedger', [id], MOCK_LEDGER); }

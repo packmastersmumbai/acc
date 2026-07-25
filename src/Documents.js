@@ -50,6 +50,26 @@ function fileDocument(base64, name, mime, folderPath) {
   return { fileId: file.getId(), url: file.getUrl() };
 }
 
+/**
+ * Archive a scanned bill under Bills/<YYYY-MM>/ so the original survives OCR
+ * (ocrExtract deletes its temp Doc, keeping nothing). Best-effort: archiving is
+ * bookkeeping, so a Drive failure must not fail the scan the user is doing.
+ * @return {{fileId:string, url:string}|null} null if archiving failed
+ */
+function archiveScan(base64, mime, supplier) {
+  var stamp = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM');
+  var when = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyyMMdd-HHmmss');
+  var ext = (mime === 'application/pdf') ? '.pdf' : '.jpg';
+  var safe = String(supplier || 'scan').replace(/[^A-Za-z0-9 _-]/g, '').trim() || 'scan';
+
+  try {
+    return fileDocument(base64, when + ' ' + safe + ext, mime, 'Bills/' + stamp);
+  } catch (e) {
+    console.error('archiveScan failed: ' + e);
+    return null;
+  }
+}
+
 /** Get-or-create a nested folder path under My Drive; returns the leaf folder. */
 function _ensureFolderPath_(pathStr) {
   var parts = pathStr.split('/').filter(function (p) { return p; });

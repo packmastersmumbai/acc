@@ -16,6 +16,15 @@ async function driveScan(page) {
   });
 }
 
+// PDFs skip the canvas downscaler entirely — fileToBase64 reads them as-is and
+// hands ocrExtract an application/pdf mime, which Drive OCR accepts directly.
+async function drivePdfScan(page, sizeBytes) {
+  await page.evaluate((n) => {
+    const file = new File([new Uint8Array(n)], 'bill.pdf', { type: 'application/pdf' });
+    window.__scanOnFile(file);
+  }, sizeBytes || 32);
+}
+
 test('matched branch: parsed fields shown + matched party rendered', async ({ page, loadPage }) => {
   await loadPage('scan');
   await driveScan(page);
@@ -50,4 +59,77 @@ test('no-match branch: red notice + create-supplier tile', async ({ page, loadPa
   await expect(page.locator('#noMatchSection')).toContainText('No matching party found');
   await expect(page.locator('#createVendorBtn')).toBeVisible();
   await expect(page.locator('#matchedSection')).toBeHidden();
+});
+
+test('pdf upload: sent to ocrExtract as application/pdf, not canvas-downscaled', async ({ page, loadPage }) => {
+  await loadPage('scan');
+
+  // Capture what actually reaches the server, and prove the image path is untouched.
+  await page.evaluate(() => {
+    window.__downscaleCalled = false;
+    window.downscaleImage = () => { window.__downscaleCalled = true; return Promise.reject(new Error('not for pdf')); };
+    window.__gasOverride('ocrExtract', (b64, mime) => {
+      window.__ocrArgs = { b64: b64, mime: mime };
+      return 'TAX INVOICE\nGSTIN 27AABFY9773F1ZN\nYash Poly Plast\nYPP/24-25/1182\nTotal 1,74,378';
+    });
+  });
+
+  await drivePdfScan(page);
+
+  await expect(page.locator('#readSection')).toBeVisible();
+  const args = await page.evaluate(() => window.__ocrArgs);
+  expect(args.mime).toBe('application/pdf');
+  expect(args.b64.length).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.__downscaleCalled)).toBe(false);
+
+  // and the rest of the flow still runs off the OCR text
+  await expect(page.locator('#rGstin')).toHaveText('27AABFY9773F1ZN');
+  await expect(page.locator('#matchedSection')).toBeVisible();
+});
+
+test('pdf over 2MB: rejected with a size-specific message', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await drivePdfScan(page, 2 * 1024 * 1024 + 1024);
+
+  await expect(page.locator('#statusHost')).toContainText('PDF is too large');
+  await expect(page.locator('#readSection')).toBeHidden();
+});
+
+test('file input accepts pdf as well as images', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await expect(page.locator('#fileInput')).toHaveAttribute('accept', 'image/*,application/pdf');
+  // camera must not be forced, or the picker hides Files/Drive on mobile
+  await expect(page.locator('#fileInput')).not.toHaveAttribute('capture', /.*/);
+});
+
+test('scanned document is archived to Drive with supplier-stamped name', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await page.evaluate(() => {
+    window.__gasOverride('archiveScan', (b64, mime, supplier) => {
+      window.__archiveArgs = { b64: b64, mime: mime, supplier: supplier };
+      return { fileId: 'x', url: 'https://drive.google.com/file/d/x/view' };
+    });
+  });
+
+  await driveScan(page);
+
+  await expect.poll(() => page.evaluate(() => window.__archiveArgs)).toBeTruthy();
+  const args = await page.evaluate(() => window.__archiveArgs);
+  expect(args.mime).toBe('image/jpeg');
+  expect(args.supplier).toBe('Yash Poly Plast'); // from parseBill, so the file is findable
+  expect(args.b64).toBe('AAAA');                 // the ORIGINAL bytes, not the OCR text
+});
+
+test('archive failure does not disturb a scan that already succeeded', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await page.evaluate(() => {
+    window.__gasOverride('archiveScan', () => { throw new Error('drive down'); });
+  });
+
+  await driveScan(page);
+
+  // parsed + matched results still stand; no error surfaced to the user
+  await expect(page.locator('#readSection')).toBeVisible();
+  await expect(page.locator('#matchedSection')).toBeVisible();
+  await expect(page.locator('#statusHost')).not.toContainText('Could not');
 });

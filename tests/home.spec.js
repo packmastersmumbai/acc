@@ -27,3 +27,46 @@ test('attention list renders the mocked parties, overdue party flagged', async (
   // the overdue party (Yash) gets the red dot
   await expect(page.locator('#attention > div').first().locator('.bg-\\[\\#ba1a1a\\]')).toBeVisible();
 });
+
+test('clicking a party opens its ledger with that contact id', async ({ page, loadPage }) => {
+  await loadPage('home');
+  // capture navigation instead of performing it (data-URL pages cannot navigate)
+  await page.evaluate(() => {
+    window.__nav = null;
+    window.go = (p, params) => { window.__nav = { page: p, params: params }; };
+  });
+
+  await page.locator('#attention > div', { hasText: 'Yash Poly Plast' }).click();
+
+  expect(await page.evaluate(() => window.__nav)).toEqual({
+    page: 'ledger', params: { id: '116000000618000' },
+  });
+});
+
+test('each party opens its OWN ledger, not the first row', async ({ page, loadPage }) => {
+  await loadPage('home');
+  await page.evaluate(() => {
+    window.__nav = null;
+    window.go = (p, params) => { window.__nav = { page: p, params: params }; };
+  });
+
+  await page.locator('#attention > div', { hasText: 'Henkel Adhesives' }).click();
+
+  expect(await page.evaluate(() => window.__nav.params.id)).toBe('116000000618111');
+});
+
+test('a party with no contact_id is inert — no navigation, no button affordance', async ({ page, loadPage }) => {
+  await loadPage('home');
+  await page.evaluate(() => {
+    window.__nav = null;
+    window.go = (p, params) => { window.__nav = { page: p, params: params }; };
+  });
+
+  const row = page.locator('#attention > div', { hasText: 'Dorf Ketal' });
+  await expect(row).not.toHaveAttribute('data-go', /.*/);
+  await expect(row).not.toHaveAttribute('role', 'button');
+  // dispatch directly: this row can sit under the fixed nav, and a real click
+  // there would be testing layout, not the inertness we care about here
+  await row.dispatchEvent('click');
+  expect(await page.evaluate(() => window.__nav)).toBe(null);
+});

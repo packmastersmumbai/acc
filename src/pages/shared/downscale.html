@@ -2,7 +2,11 @@
        <?!= include('pages/shared/downscale') ?>
      Zoho/Drive OCR wants images under ~2MB; phone photos are 4-10MB. This
      redraws to a bounded canvas and steps JPEG quality down until under the cap.
-     Exposes window.downscaleImage(file, opts) -> Promise<{base64, mime, bytes}>. -->
+     Exposes window.downscaleImage(file, opts) -> Promise<{base64, mime, bytes}>.
+
+     PDFs cannot be canvas-redrawn, so window.fileToBase64(file) branches: images
+     go through the downscaler, PDFs are read as-is (Drive OCR accepts them
+     directly) and rejected if over the cap, since we cannot shrink them. -->
 <script>
 (function () {
   var MAX_BYTES = 2 * 1024 * 1024;   // 2MB target
@@ -52,6 +56,36 @@
         base64 = dataUrl.split(',')[1];
       }
       return { base64: base64, mime: mime, bytes: b64Bytes(base64) };
+    });
+  };
+
+  function readAsBase64(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        // result is a data: URL — strip the "data:<mime>;base64," prefix
+        resolve(String(reader.result).split(',')[1] || '');
+      };
+      reader.onerror = function () { reject(reader.error); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  window.isPdf = function (file) {
+    return file.type === 'application/pdf' ||
+           /\.pdf$/i.test(file.name || '');
+  };
+
+  // Any capture (photo or PDF) -> {base64, mime, bytes} ready for ocrExtract.
+  window.fileToBase64 = function (file, opts) {
+    var maxBytes = (opts && opts.maxBytes) || MAX_BYTES;
+
+    if (!window.isPdf(file)) return window.downscaleImage(file, opts);
+
+    return readAsBase64(file).then(function (base64) {
+      var bytes = b64Bytes(base64);
+      if (bytes > maxBytes) throw new Error('PDF_TOO_LARGE');
+      return { base64: base64, mime: 'application/pdf', bytes: bytes };
     });
   };
 })();

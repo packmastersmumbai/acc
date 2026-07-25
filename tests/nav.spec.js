@@ -29,3 +29,20 @@ test('nav is injected once (no duplicate bars)', async ({ page, loadPage }) => {
   await loadPage('home', { query: 'p=home' });
   await expect(page.locator('#pm-nav')).toHaveCount(1);
 });
+
+// Regression: the fixed nav (z-60, bottom-0) used to sit ON TOP of a page's own
+// fixed action bar, swallowing its clicks — party/ledger save buttons were dead.
+test('a page action bar is not covered by the nav', async ({ page, loadPage }) => {
+  await loadPage('party');
+
+  const bar = page.locator('div.fixed.bottom-0');
+  const nav = page.locator('#pm-nav');
+  const barBox = await bar.boundingBox();
+  const navBox = await nav.boundingBox();
+
+  // the action bar must sit entirely above the nav, not overlap it
+  expect(barBox.y + barBox.height).toBeLessThanOrEqual(navBox.y + 1);
+
+  // and its button must actually receive the click
+  await page.locator('#saveBtn').click({ timeout: 5000 });
+});

@@ -247,12 +247,20 @@
     }
     host.innerHTML = list.map(function (p) {
       var dot = p.overdue ? 'bg-[#ba1a1a]' : 'bg-primary-container';
-      return '<div class="flex items-center justify-between py-stack-md hairline-b">' +
+      // A party with a known contact_id opens its ledger; one without stays
+      // inert rather than navigating to somebody else's records.
+      var open = p.contact_id
+        ? ' data-go="ledger" data-go-params=\'' +
+          esc(JSON.stringify({ id: p.contact_id })) + '\' role="button" tabindex="0"' +
+          ' class="w-full text-left flex items-center justify-between py-stack-md hairline-b cursor-pointer hover:bg-surface-container transition-colors"'
+        : ' class="w-full flex items-center justify-between py-stack-md hairline-b"';
+      return '<div' + open + '>' +
         '<div class="flex flex-col gap-base"><span class="font-body-md text-on-surface font-medium flex items-center gap-2">' +
         esc(p.name) + '<span class="w-1.5 h-1.5 rounded-full ' + dot + '"></span></span>' +
         (p.gap ? '<span class="font-label-sm text-secondary">' + esc(p.gap) + '</span>' : '') +
         '</div><span class="font-data-md text-data-md text-on-surface">' + inr(p.amount) + '</span></div>';
     }).join('');
+    if (window.wireGo) window.wireGo(host);
   }
 
   function load() {

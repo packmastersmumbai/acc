@@ -12,7 +12,9 @@
   .btn-ghost { color:#71717a; border:1px solid #e7e5e4; border-radius:4px; }
   .pill-overdue { color:#ba1a1a; background:rgba(186,26,26,0.08); border-radius:4px; }
   .pill-open { color:#047857; background:rgba(4,120,87,0.1); border-radius:4px; }
-  .sheet { position:fixed; inset:0; background:rgba(0,0,0,0.4); display:none; align-items:flex-end; z-index:50; }
+  /* z-index must beat the shared nav (60), or the nav overlays the sheet body
+     and swallows the confirm button's clicks. */
+  .sheet { position:fixed; inset:0; background:rgba(0,0,0,0.4); display:none; align-items:flex-end; z-index:70; }
   .sheet.open { display:flex; }
   .sheet-body { background:#fafaf9; width:100%; border-top-left-radius:12px; border-top-right-radius:12px; padding:20px; }
 </style>

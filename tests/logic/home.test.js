@@ -27,6 +27,35 @@ test('rollupContacts merges casing-duplicate parties into one entry', () => {
   expect(roll.recv).toBe(10000);
 });
 
+test('rollupContacts carries contact_id so rows can open a ledger', () => {
+  const roll = ctx.rollupContacts([
+    { contact_id: '111', contact_name: 'Henkel', outstanding_receivable_amount: '10000', outstanding_payable_amount: 0 },
+  ]);
+  expect(roll.attention[0].contact_id).toBe('111');
+  expect(roll.attention[0].contact_ids).toEqual(['111']);
+});
+
+test('merged casing-duplicates keep every id, and open the largest-balance one', () => {
+  const roll = ctx.rollupContacts([
+    { contact_id: 'small', contact_name: 'Yash Poly Plast', outstanding_payable_amount: '3000', outstanding_receivable_amount: 0 },
+    { contact_id: 'big',   contact_name: 'YASH POLY PLAST', outstanding_payable_amount: '5000', outstanding_receivable_amount: 0 },
+  ]);
+  const yash = roll.attention[0];
+  expect(yash.amount).toBe(8000);
+  // no id silently lost in the merge...
+  expect(yash.contact_ids.sort()).toEqual(['big', 'small']);
+  // ...and the click target is the record holding most of the money
+  expect(yash.contact_id).toBe('big');
+});
+
+test('contacts with no contact_id stay inert rather than borrowing another id', () => {
+  const roll = ctx.rollupContacts([
+    { contact_name: 'Nameless', outstanding_payable_amount: '500', outstanding_receivable_amount: 0 },
+  ]);
+  expect(roll.attention[0].contact_id).toBe('');
+  expect(roll.attention[0].contact_ids).toEqual([]);
+});
+
 test('rollupContacts sorts attention by largest balance and skips zero-balance', () => {
   const roll = ctx.rollupContacts([
     { contact_name: 'Small', outstanding_payable_amount: '100', outstanding_receivable_amount: 0 },

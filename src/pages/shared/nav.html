@@ -17,6 +17,10 @@
   #pm-nav a.active { color:#047857; background:rgba(4,120,87,0.08); }
   /* keep page content clear of the fixed bar */
   body { padding-bottom:76px; }
+  /* A page's own fixed bottom bar (Save / action bar) would otherwise sit UNDER
+     the nav, which then swallows its clicks. Lift such bars above the nav.
+     body padding only clears scrolling content — fixed elements ignore it. */
+  body > .fixed.bottom-0, body > div.fixed.bottom-0 { bottom:64px; z-index:55; }
 </style>
 <script>
 (function () {
@@ -81,6 +85,10 @@
       });
     });
   }
+
+  // Pages that render rows after load (home attention, reconcile, ledger) must
+  // re-wire the new [data-go] nodes. Idempotent — already-wired nodes are skipped.
+  window.wireGo = wireGo;
 
   document.addEventListener('DOMContentLoaded', function () {
     injectNav();     // consistent bottom nav on every page

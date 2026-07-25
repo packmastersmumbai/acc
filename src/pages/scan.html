@@ -28,10 +28,10 @@
       <span class="material-symbols-outlined text-[#047857] mr-3">document_scanner</span>
       <div>
         <div class="text-base text-[#047857] font-semibold">Take photo or upload bill</div>
-        <div class="text-[13px] text-[#71717a]">GST · Udyam · remittance advice</div>
+        <div class="text-[13px] text-[#71717a]">Photo or PDF · GST · Udyam · remittance advice</div>
       </div>
     </label>
-    <input id="fileInput" type="file" accept="image/*" capture="environment" class="hidden"/>
+    <input id="fileInput" type="file" accept="image/*,application/pdf" class="hidden"/>
   </section>
 
   <!-- Status host (loading/error) -->
@@ -87,13 +87,9 @@
 <?!= include('pages/shared/downscale') ?>
 <script>
 (function () {
-  var parsed = null, matched = null;
+  var parsed = null, matched = null, archivedUrl = null;
 
   function show(id, on) { document.getElementById(id).classList.toggle('hidden', !on); }
-  function fileToBase64(file) {
-    // downscale first, then hand back base64
-    return window.downscaleImage(file).then(function (r) { return { base64: r.base64, mime: r.mime }; });
-  }
 
   function renderParsed(p) {
     document.getElementById('rSupplier').textContent = p.supplier || '—';
@@ -124,20 +120,36 @@
   }
 
   function onFile(file) {
-    AppStates.loading('#statusHost', 'Reading bill…');
-    fileToBase64(file).then(function (img) {
+    var isPdf = window.isPdf(file);
+    AppStates.loading('#statusHost', isPdf ? 'Reading PDF…' : 'Reading bill…');
+    window.fileToBase64(file).then(function (img) {
       google.script.run
         .withSuccessHandler(function (text) {
           google.script.run
             .withSuccessHandler(function (p) {
               parsed = p; AppStates.clear('#statusHost'); renderParsed(p); runMatch(p.gstin);
+              // Keep the original document — OCR discards its temp copy. Best-effort:
+              // a Drive failure must not disturb a scan that already succeeded.
+              google.script.run
+                .withSuccessHandler(function (r) { if (r && r.url) archivedUrl = r.url; })
+                .withFailureHandler(function () { /* archiving is bookkeeping */ })
+                .archiveScan(img.base64, img.mime, p.supplier || '');
             })
             .withFailureHandler(function () { AppStates.error('#statusHost', 'Could not parse the bill', null); })
             .parseBill(text);
         })
-        .withFailureHandler(function () { AppStates.error('#statusHost', 'OCR failed — try a clearer photo', null); })
+        .withFailureHandler(function () {
+          AppStates.error('#statusHost',
+            isPdf ? 'OCR failed — this PDF may be image-only or unreadable'
+                  : 'OCR failed — try a clearer photo', null);
+        })
         .ocrExtract(img.base64, img.mime);
-    }).catch(function () { AppStates.error('#statusHost', 'Could not read the image', null); });
+    }).catch(function (e) {
+      AppStates.error('#statusHost',
+        (e && e.message === 'PDF_TOO_LARGE')
+          ? 'PDF is too large (over 2MB) — split it or upload a photo instead'
+          : (isPdf ? 'Could not read the PDF' : 'Could not read the image'), null);
+    });
   }
 
   document.getElementById('fileInput').addEventListener('change', function (e) {
