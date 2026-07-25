@@ -50,18 +50,36 @@ function suggestMatch(txn) {
 }
 
 /**
- * SPIKE — accept a match (categorize). Body is UNVERIFIED; do NOT call in dev.
- * Resolve the exact POST body by capturing the Zoho web-UI request (devtools)
- * with the user's authorization for ONE real categorize, or from Zoho API docs.
- * Until then the reconcile UI keeps Accept disabled (feature flag, Task 11).
+ * Accept a match — categorizes an uncategorized bank txn against a document.
+ * This is a WRITE.
+ *
+ * Body confirmed against Zoho's official OpenAPI spec (bank-transactions.yml,
+ * schema match-a-transaction-request): a transactions_to_be_matched array of
+ * {transaction_id, transaction_type}.
+ *
+ * Re-verifies the txn is STILL uncategorized immediately before posting: the
+ * caller's list may be minutes or days old, and matching an already-categorized
+ * txn corrupts the reconciliation.
  */
 function acceptMatch(transactionId, matchObj) {
-  throw new Error('acceptMatch is a gated spike: POST body unverified. ' +
-    'Resolve via authorized devtools capture before enabling.');
-  // Likely body (to confirm):
-  // { transactions_to_be_matched: [{ transaction_id: matchObj.id,
-  //                                  transaction_type: matchObj.type }] }
-  // return zohoPost('banktransactions/uncategorized/' + transactionId + '/match', body);
+  if (!transactionId) throw new Error('acceptMatch: transactionId required');
+  if (!matchObj || !matchObj.id || !matchObj.type) {
+    throw new Error('acceptMatch: match must carry both id and type');
+  }
+
+  var current = zohoGet('banktransactions/' + transactionId).banktransaction;
+  var status = current && (current.status || current.transaction_status);
+  if (status && status !== 'uncategorized') {
+    throw new Error('Already ' + status + ' in Zoho — refresh before accepting');
+  }
+
+  var body = {
+    transactions_to_be_matched: [
+      { transaction_id: matchObj.id, transaction_type: matchObj.type }
+    ]
+  };
+  zohoPost('banktransactions/uncategorized/' + transactionId + '/match', body);
+  return { success: true, transactionId: transactionId };
 }
 
 if (typeof module !== 'undefined' && module.exports) {

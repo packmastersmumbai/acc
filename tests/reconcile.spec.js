@@ -15,9 +15,68 @@ test('renders transactions as rows with Skip/Accept tiles', async ({ page, loadP
   await expect(page.locator('#progressLabel')).toHaveText('0 of 2 reviewed');
 });
 
-test('Accept tiles are disabled (spike gate)', async ({ page, loadPage }) => {
+test('Accept posts the suggested match after confirmation', async ({ page, loadPage }) => {
   await loadPage('reconcile');
-  await expect(page.locator('.rc-row').first().locator('[data-act="accept"]')).toBeDisabled();
+  await page.evaluate(() => {
+    window.__gasOverride('acceptMatch', (txnId, m) => { window.__accepted = { txnId, m }; return { success: true }; });
+  });
+
+  const row = page.locator('.rc-row').first();
+  page.once('dialog', (d) => d.accept());
+  await row.locator('[data-act="accept"]').click();
+
+  await expect.poll(() => page.evaluate(() => window.__accepted)).toBeTruthy();
+  const sent = await page.evaluate(() => window.__accepted);
+  // the match carries BOTH fields the Zoho spec requires
+  expect(sent.m.id).toBe('116000000618057');
+  expect(sent.m.type).toBe('invoice');
+  await expect(row).toHaveClass(/done/);
+});
+
+test('cancelling the match confirmation writes nothing', async ({ page, loadPage }) => {
+  await loadPage('reconcile');
+  await page.evaluate(() => {
+    window.__accepted = null;
+    window.__gasOverride('acceptMatch', (txnId, m) => { window.__accepted = { txnId, m }; return { success: true }; });
+  });
+
+  const row = page.locator('.rc-row').first();
+  page.once('dialog', (d) => d.dismiss());
+  await row.locator('[data-act="accept"]').click();
+
+  expect(await page.evaluate(() => window.__accepted)).toBe(null);
+  await expect(row).not.toHaveClass(/done/);
+  await expect(row.locator('[data-act="accept"]')).toBeEnabled();
+});
+
+test('a txn with no match is flagged, not silently accepted', async ({ page, loadPage }) => {
+  await loadPage('reconcile');
+  await page.evaluate(() => {
+    window.__accepted = null;
+    window.__gasOverride('suggestMatch', () => null);
+    window.__gasOverride('acceptMatch', (txnId, m) => { window.__accepted = { txnId, m }; return { success: true }; });
+  });
+
+  const row = page.locator('.rc-row').first();
+  await row.locator('[data-act="accept"]').click();
+
+  await expect(row.locator('.rc-note')).toContainText('No match found');
+  expect(await page.evaluate(() => window.__accepted)).toBe(null);
+  await expect(row).not.toHaveClass(/done/);
+});
+
+test('a stale row surfaces the server refusal instead of appearing done', async ({ page, loadPage }) => {
+  await loadPage('reconcile');
+  await page.evaluate(() => {
+    window.__gasOverride('acceptMatch', () => { throw new Error('Already categorized in Zoho — refresh before accepting'); });
+  });
+
+  const row = page.locator('.rc-row').first();
+  page.once('dialog', (d) => d.accept());
+  await row.locator('[data-act="accept"]').click();
+
+  await expect(row.locator('.rc-note')).toContainText('Already categorized');
+  await expect(row).not.toHaveClass(/done/);
 });
 
 test('Skip marks a row reviewed and advances progress', async ({ page, loadPage }) => {

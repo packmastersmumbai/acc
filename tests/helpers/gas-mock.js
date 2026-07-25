@@ -78,7 +78,12 @@ const GAS_MOCK_SCRIPT = `
     // if a test overrode this method, use it; else the default below.
     function dispatch(name, args, dflt) {
       var o = window.__gasOverrides[name];
-      respond(o ? o.apply(null, args) : dflt);
+      if (!o) { respond(dflt); return; }
+      // A server function that throws must reach withFailureHandler, exactly as
+      // google.script.run does — not propagate out of the call.
+      var v;
+      try { v = o.apply(null, args); } catch (e) { fail(e); return; }
+      respond(v);
     }
 
     return {

@@ -56,13 +56,26 @@
 <?!= include('pages/shared/states') ?>
 <script>
 (function () {
-  // Accept is feature-flagged OFF until the acceptMatch POST body is resolved
-  // (gated spike). Accept tiles render disabled; Skip marks a row reviewed.
-  var ACCEPT_ENABLED = false;
+  // Accept is live: the categorize POST body is confirmed against Zoho's
+  // official OpenAPI spec (match-a-transaction-request).
+  var ACCEPT_ENABLED = true;
   var AXIS = '1161923000000540009';
   var PAGE_SIZE = 200;
   var all = [];      // every uncategorized txn
   var reviewed = {}; // transactionId -> true once skipped/accepted
+
+  /** Show a per-row message (match failure, no candidate) next to the narration. */
+  function setRowNote(rowEl, msg) {
+    var main = rowEl.querySelector('.rc-main');
+    var note = main.querySelector('.rc-note');
+    if (!note) {
+      note = document.createElement('div');
+      note.className = 'rc-note mono text-xs mt-0.5';
+      note.style.color = '#ba1a1a';
+      main.appendChild(note);
+    }
+    note.textContent = msg;
+  }
   var page = 0;      // 0-based page of 200
 
   function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
@@ -116,8 +129,42 @@
       var acc = rowEl.querySelector('[data-act="accept"]');
       acc.addEventListener('click', function () {
         if (!ACCEPT_ENABLED) return; // hard guard
-        reviewed[id] = true; rowEl.classList.add('done'); renderProgress();
-        // acceptMatch(id, ...) wired here once the spike resolves
+        var txn = rows.filter(function (r) { return r.transactionId === id; })[0];
+        if (!txn) return;
+
+        // Ask Zoho what this txn matches, and show it BEFORE writing — the user
+        // must see which document is being categorized, not just "Accept".
+        acc.disabled = true; acc.textContent = '…';
+        google.script.run
+          .withSuccessHandler(function (m) {
+            if (!m) {
+              acc.disabled = false; acc.textContent = 'Accept';
+              rowEl.classList.add('nomatch');
+              setRowNote(rowEl, 'No match found in Zoho');
+              return;
+            }
+            if (!window.confirm('Match this transaction?\n\n' + inr(txn.amount) +
+                                ' ' + txn.date + '\n\nto ' + (m.type || 'document') +
+                                ' ' + (m.label || m.id))) {
+              acc.disabled = false; acc.textContent = 'Accept';
+              return;
+            }
+            google.script.run
+              .withSuccessHandler(function () {
+                reviewed[id] = true; rowEl.classList.add('done');
+                acc.textContent = 'Matched'; renderProgress();
+              })
+              .withFailureHandler(function (e) {
+                acc.disabled = false; acc.textContent = 'Accept';
+                setRowNote(rowEl, (e && e.message) ? e.message : 'Could not match');
+              })
+              .acceptMatch(id, m);
+          })
+          .withFailureHandler(function () {
+            acc.disabled = false; acc.textContent = 'Accept';
+            setRowNote(rowEl, 'Could not load a match');
+          })
+          .suggestMatch(txn);
       });
     });
 
