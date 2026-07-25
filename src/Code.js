@@ -7,6 +7,7 @@ function doGet(e) {
   const t = HtmlService.createTemplateFromFile('pages/' + p);
   t.appUrl = ScriptApp.getService().getUrl();  // pages use this to navigate (top.location)
   t.qs = (e && e.parameter) || {};
+  t.page = p;  // authoritative: the client cannot read the wrapper's URL (cross-origin)
   return t.evaluate()
     .setTitle('PackMasters Accounts')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')

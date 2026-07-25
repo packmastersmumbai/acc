@@ -74,6 +74,35 @@
       app.classList.add('ready');
       loader.style.display = 'none';
     }, 12000);
+
+    // Navigation from inside the app. The app cannot set our location itself —
+    // it is cross-origin, so top.location.search assignment is blocked by the
+    // browser — so it asks us to re-point the iframe and we keep our clean URL.
+    window.addEventListener('message', function (ev) {
+      var d = ev.data;
+      if (!d || d.type !== 'pm-nav' || typeof d.qs !== 'string') return;
+      // only accept navigation from the app frame we ourselves loaded
+      if (ev.source !== app.contentWindow) return;
+
+      // Rebuild the query string from a whitelist rather than trusting it: the
+      // value is concatenated into an iframe src, so an unchecked string is a
+      // redirect vector. Unknown keys are dropped.
+      var ALLOWED = { p: 1, id: 1, name: 1, gstin: 1 };
+      var clean = [];
+      d.qs.split('&').forEach(function (pair) {
+        var eq = pair.indexOf('=');
+        var k = eq < 0 ? pair : pair.slice(0, eq);
+        var v = eq < 0 ? '' : pair.slice(eq + 1);
+        if (!ALLOWED[decodeURIComponent(k)]) return;
+        clean.push(encodeURIComponent(decodeURIComponent(k)) + '=' +
+                   encodeURIComponent(decodeURIComponent(v)));
+      });
+      if (!clean.length) return;
+      var qs = clean.join('&');
+
+      app.src = base + '?' + qs;
+      history.replaceState(null, '', window.location.pathname + '?' + qs);
+    });
   </script>
 </body>
 </html>

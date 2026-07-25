@@ -40,7 +40,11 @@ async function loadPage(page, pageName, opts) {
     ? '<script>' + Object.entries(opts.overrides)
         .map(([k, v]) => `window.__gasOverride(${JSON.stringify(k)}, ${v});`).join('') + '</script>'
     : '';
-  const mockTag = `<script>${GAS_MOCK_SCRIPT}</script>` + queryShim + overrideShim;
+  // GAS sets window.__page from the server template (<?= page ?>); the stripper
+  // above blanks that, so restore it here — the nav reads it to highlight the
+  // active tab, and inside the wrapper it is the ONLY reliable source.
+  const pageShim = `<script>window.__page = ${JSON.stringify(pageName)};</script>`;
+  const mockTag = `<script>${GAS_MOCK_SCRIPT}</script>` + pageShim + queryShim + overrideShim;
   if (html.includes('<head>')) {
     html = html.replace('<head>', '<head>' + mockTag);
   } else if (html.includes('<html')) {

@@ -37,7 +37,13 @@
     catch (e) { framedByWrapper = true; } // cross-origin access throws → we ARE framed by another origin
 
     if (framedByWrapper) {
-      try { window.top.location.search = '?' + qs; return; } catch (e) { /* fall through */ }
+      // Ask the wrapper to re-point its iframe. Assigning top.location.search
+      // directly does NOT work here: GAS serves this page inside its own
+      // sandbox frame, so the wrapper is cross-origin and the browser blocks
+      // the write — which used to fall through and navigate to the raw GAS URL,
+      // exposing script.google.com in the address bar.
+      try { window.top.postMessage({ type: 'pm-nav', qs: qs }, '*'); return; }
+      catch (e) { /* fall through to a direct navigation */ }
     }
     // standalone: navigate the app directly (break out of GAS's own sandbox iframe)
     var base = window.__appUrl || '';
@@ -46,6 +52,10 @@
   };
   // Which page are we on? (from ?p= on either the wrapper or the app frame)
   function currentPage() {
+    // The server knows which page it rendered. Prefer that: inside the wrapper
+    // this frame is cross-origin to the top window, so top.location.search
+    // throws and the nav could never highlight the active tab.
+    if (window.__page) return window.__page;
     var s = '';
     try { s = window.top.location.search || ''; } catch (e) {}
     if (!s) s = window.__search || window.location.search || '';
