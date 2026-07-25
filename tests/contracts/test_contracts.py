@@ -93,6 +93,18 @@ def test_match_contact_by_gstin_query_works(zoho):
     assert "contact_id" in found
 
 
+def test_backup_modules_all_reachable(zoho):
+    """Backup pages these modules; confirm each responds code 0 read-only (one
+    page each, no writes) so backupNow won't hit an unknown endpoint."""
+    modules = [
+        "contacts", "invoices", "bills", "customerpayments", "vendorpayments",
+        "creditnotes", "items", "purchaseorders",
+    ]
+    for path in modules:
+        r = zoho.books(path, PM, per_page=1)
+        assert r["code"] == 0, f"{path} returned {r.get('code')}"
+
+
 def test_match_discovery_endpoint_returns_code_zero(zoho):
     """suggestMatch reads banktransactions/uncategorized/{id}/match — READ only;
     the POST accept body is a gated spike, never exercised here."""
