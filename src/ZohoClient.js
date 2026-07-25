@@ -52,6 +52,9 @@ function zohoDc_() { return zohoProp_('ZOHO_DC', 'com'); }
 function zohoApiBase_() { return 'https://www.zohoapis.' + zohoDc_() + '/books/v3'; }
 function zohoOrgId_() { return zohoProp_('ZOHO_ORG_ID', ZOHO_ORG_ID); }
 
+/** The org id, for the settings screen (client-callable; zohoOrgId_ is private). */
+function getOrgId() { return zohoOrgId_(); }
+
 /**
  * OAuth access token via refresh-token flow, cached in CacheService.
  * Zoho tokens live ~3600s; we cache 3000s and let Zoho mint a fresh one after.
