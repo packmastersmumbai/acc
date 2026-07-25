@@ -11,6 +11,7 @@
 !/playwright.config.js
 !/src/
 !/tests/
+!/tools/
 !/docs/
 !/.github/
 !/.nojekyll
@@ -27,3 +28,4 @@ test-results/
 playwright/.cache/
 .env
 *.token
+/.stitch-src/
