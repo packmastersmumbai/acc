@@ -26,8 +26,8 @@
   <section class="card p-4 mb-6">
     <div class="flex items-start justify-between mb-3">
       <div>
-        <div class="mono text-sm">Nightly backup</div>
-        <div class="mono text-xs text-[#71717a] mt-0.5">Every day at 02:00 IST → Drive</div>
+        <div class="mono text-sm">Scheduled backup</div>
+        <div id="backupCadence" class="mono text-xs text-[#71717a] mt-0.5">02:00 IST → Drive</div>
       </div>
       <span id="nightlyPill" class="pill-off mono text-xs px-2 py-1 uppercase">—</span>
     </div>
@@ -108,6 +108,12 @@
     pill.textContent = nightlyOn ? 'On' : 'Off';
     pill.className = (nightlyOn ? 'pill-on' : 'pill-off') + ' mono text-xs px-2 py-1 uppercase';
     document.getElementById('nightlyBtn').textContent = nightlyOn ? 'Turn off' : 'Turn on';
+
+    // The cadence comes from the server — hardcoding it here drifts the moment
+    // the interval changes.
+    var n = (s && s.everyDays) || 1;
+    document.getElementById('backupCadence').textContent =
+      (n === 1 ? 'Every day' : 'Every ' + n + ' days') + ' at 02:00 IST → Drive';
 
     document.getElementById('lastBackup').textContent =
       (s && s.lastBackup)

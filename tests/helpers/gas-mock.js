@@ -89,7 +89,7 @@ const GAS_MOCK_SCRIPT = `
   ];
 
   // Backup / settings state (getBackupStatus)
-  var MOCK_BACKUP_STATUS = { nightly: false, lastBackup: null, lastRecords: null };
+  var MOCK_BACKUP_STATUS = { nightly: false, everyDays: 3, lastBackup: null, lastRecords: null };
 
   // Google Sheet export state (getSheetStatus)
   var MOCK_SHEET_STATUS = { sheetId: null, url: null, scheduled: false,
@@ -148,8 +148,8 @@ const GAS_MOCK_SCRIPT = `
                              records: 6896, tabs: [{name:'Contacts',rows:171},{name:'Invoices',rows:3854}] }); },
       installNightlySheetExport: function()      { dispatch('installNightlySheetExport', [], { scheduled: true, url: null, lastExport: null, lastRows: null }); },
       removeNightlySheetExport:  function()      { dispatch('removeNightlySheetExport', [], { scheduled: false, url: null, lastExport: null, lastRows: null }); },
-      installNightlyBackup:function()            { dispatch('installNightlyBackup', [], { nightly: true, lastBackup: null, lastRecords: null }); },
-      removeNightlyBackup: function()            { dispatch('removeNightlyBackup', [], { nightly: false, lastBackup: null, lastRecords: null }); },
+      installNightlyBackup:function(n)           { dispatch('installNightlyBackup', [n], { nightly: true, everyDays: n || 3, lastBackup: null, lastRecords: null }); },
+      removeNightlyBackup: function()            { dispatch('removeNightlyBackup', [], { nightly: false, everyDays: 3, lastBackup: null, lastRecords: null }); },
       cacheBustAll:        function()            { dispatch('cacheBustAll', [], { success: true }); },
       getOrgId:            function()            { dispatch('getOrgId', [], '661445520'); },
       listOpenParties:     function()            { dispatch('listOpenParties', [], MOCK_PARTIES); },

@@ -11,6 +11,22 @@ test('shows backup status: never run, nightly off', async ({ page, loadPage }) =
   await expect(page.locator('#nightlyBtn')).toHaveText('Turn on');
 });
 
+test('the backup cadence shown comes from the server, not the markup', async ({ page, loadPage }) => {
+  // Default for this org is every 3 days — ~11 bills/month does not justify
+  // a nightly 22MB snapshot.
+  await loadPage('settings');
+  await expect(page.locator('#backupCadence')).toHaveText('Every 3 days at 02:00 IST → Drive');
+});
+
+test('a daily interval reads as "Every day", not "Every 1 days"', async ({ page, loadPage }) => {
+  await loadPage('settings', {
+    overrides: {
+      getBackupStatus: 'function(){ return { nightly:true, everyDays:1, lastBackup:null, lastRecords:null }; }'
+    }
+  });
+  await expect(page.locator('#backupCadence')).toHaveText('Every day at 02:00 IST → Drive');
+});
+
 test('reports a previous backup with its record count', async ({ page, loadPage }) => {
   await loadPage('settings', {
     overrides: {

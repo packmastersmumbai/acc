@@ -54,13 +54,39 @@ function backupNow() {
   return { records: total, driveFileId: filed.fileId };
 }
 
-/** Install a nightly (02:00 IST) backup trigger. Idempotent — removes any prior. */
-function installNightlyBackup() {
-  ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'backupNow') ScriptApp.deleteTrigger(t);
-  });
-  ScriptApp.newTrigger('backupNow').timeBased().everyDays(1).atHour(2).create();
+/**
+ * How often the unattended backup runs, in days. Three suits this org: the
+ * books take ~11 new bills a month, so a nightly 22MB snapshot is mostly a
+ * copy of yesterday. Changing this reschedules on the next install call.
+ */
+var BACKUP_EVERY_DAYS = 3;
+
+/**
+ * Install the recurring backup trigger at 02:00 IST. Idempotent — removes any
+ * prior trigger first, so calling it twice does not double-schedule.
+ * @param {number=} everyDays override the default interval
+ */
+function installNightlyBackup(everyDays) {
+  removeNightlyBackup();
+  var n = _backupInterval_(everyDays);
+  ScriptApp.newTrigger('backupNow').timeBased()
+    .everyDays(n)
+    .atHour(2)
+    .inTimezone('Asia/Kolkata')   // otherwise it fires in the script's tz
+    .create();
+  PropertiesService.getScriptProperties().setProperty('BACKUP_EVERY_DAYS', String(n));
   return getBackupStatus();
+}
+
+/** Clamp to what Apps Script accepts; fall back to the default. */
+function _backupInterval_(n) {
+  n = parseInt(n, 10);
+  if (isNaN(n) || n < 1) {
+    var stored = parseInt(
+      PropertiesService.getScriptProperties().getProperty('BACKUP_EVERY_DAYS'), 10);
+    n = isNaN(stored) ? BACKUP_EVERY_DAYS : stored;
+  }
+  return Math.min(Math.max(n, 1), 30);
 }
 
 /** Remove the nightly trigger. */
@@ -86,6 +112,7 @@ function getBackupStatus() {
   var recs = props.getProperty('LAST_BACKUP_RECORDS');
   return {
     nightly: nightly,
+    everyDays: _backupInterval_(),
     lastBackup: last || null,
     lastRecords: recs ? parseInt(recs, 10) : null
   };
