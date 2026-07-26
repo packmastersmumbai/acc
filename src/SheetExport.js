@@ -63,22 +63,57 @@ var BANK_TAB = ['Bank Transactions', [
  * @return {{spreadsheetId, url, tabs:Array<{name,rows}>, records:number}}
  */
 function exportToSheet() {
+  return _export_(false);
+}
+
+/**
+ * Delta export: probe each module (1 call each), skip the ones that have not
+ * changed, and re-read only those that have. On a quiet night this is ~9 calls
+ * instead of ~35. banktransactions is always pulled whole — it has no
+ * last_modified_time and its date_start filter is silently ignored (verified).
+ */
+function exportChangedToSheet() {
+  return _export_(true);
+}
+
+function _export_(useDelta) {
   var ss = _openOrCreateSheet_();
-  var summary = [], total = 0;
+  var summary = [], total = 0, calls = 0, skipped = [];
+
+  var detect = useDelta ? detectChanges() : null;
+  if (detect) calls += detect.calls;
 
   SHEET_TABS.forEach(function (spec) {
-    var rows = _allRows_(spec[0], spec[1]);          // reused from Backup.js
-    _writeTab_(ss, spec[2], spec[3], rows);
-    summary.push({ name: spec[2], rows: rows.length });
-    total += rows.length;
+    var tabName = spec[2];
+
+    // Unchanged AND already on the sheet → leave the tab alone.
+    if (detect && detect.unchanged.indexOf(spec[0]) !== -1 && _tabHasRows_(ss, tabName)) {
+      var kept = Math.max(0, ss.getSheetByName(tabName).getLastRow() - 1);
+      summary.push({ name: tabName, rows: kept, skipped: true });
+      total += kept;
+      skipped.push(tabName);
+      return;
+    }
+
+    var got = fetchDelta(spec[0], spec[1], null);   // full read for this tab
+    calls += got.calls;
+    _writeTab_(ss, tabName, spec[3], got.rows);
+    summary.push({ name: tabName, rows: got.rows.length, skipped: false });
+    total += got.rows.length;
   });
 
+  // Always full — no incremental handle exists for this module.
   var bank = _allBankRows_();
+  calls += Math.ceil(bank.length / 200) || 1;
   _writeTab_(ss, BANK_TAB[0], BANK_TAB[1], bank);
-  summary.push({ name: BANK_TAB[0], rows: bank.length });
+  summary.push({ name: BANK_TAB[0], rows: bank.length, skipped: false });
   total += bank.length;
 
-  _writeStampTab_(ss, summary, total);
+  _writeStampTab_(ss, summary, total, calls, skipped);
+
+  // Only advance the watermarks once every tab has been written successfully —
+  // a mid-run failure must not convince the next run that it is up to date.
+  if (detect) saveWatermarks(detect.probes);
 
   // Drop the default "Sheet1" a new spreadsheet is born with.
   var blank = ss.getSheetByName('Sheet1');
@@ -90,7 +125,14 @@ function exportToSheet() {
     SHEET_ID: ss.getId()
   });
 
-  return { spreadsheetId: ss.getId(), url: ss.getUrl(), tabs: summary, records: total };
+  return { spreadsheetId: ss.getId(), url: ss.getUrl(), tabs: summary,
+           records: total, apiCalls: calls, skipped: skipped };
+}
+
+/** Does this tab already hold data rows (beyond its header)? */
+function _tabHasRows_(ss, tabName) {
+  var sheet = ss.getSheetByName(tabName);
+  return !!sheet && sheet.getLastRow() > 1;
 }
 
 /** {sheetId, url, scheduled, lastExport, lastRows} for the settings screen. */
@@ -108,25 +150,27 @@ function getSheetStatus() {
 }
 
 /** Nightly export at 03:00 IST — an hour after the backup. Idempotent. */
+var SHEET_TRIGGER_FNS = ['exportToSheet', 'exportChangedToSheet'];
+
 function installNightlySheetExport() {
-  ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'exportToSheet') ScriptApp.deleteTrigger(t);
-  });
-  ScriptApp.newTrigger('exportToSheet').timeBased().everyDays(1).atHour(3).create();
+  removeNightlySheetExport();
+  // The scheduled run is the DELTA one — an unattended job should not re-pull
+  // 6,900 records to discover nothing moved.
+  ScriptApp.newTrigger('exportChangedToSheet').timeBased().everyDays(1).atHour(3).create();
   return getSheetStatus();
 }
 
 function removeNightlySheetExport() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'exportToSheet') ScriptApp.deleteTrigger(t);
+    if (SHEET_TRIGGER_FNS.indexOf(t.getHandlerFunction()) !== -1) ScriptApp.deleteTrigger(t);
   });
   return getSheetStatus();
 }
 
-/** Whether the nightly export trigger is armed. */
+/** Whether a nightly export trigger is armed (either variant). */
 function isSheetExportScheduled() {
   return ScriptApp.getProjectTriggers().some(function (t) {
-    return t.getHandlerFunction() === 'exportToSheet';
+    return SHEET_TRIGGER_FNS.indexOf(t.getHandlerFunction()) !== -1;
   });
 }
 
@@ -141,11 +185,16 @@ function _openOrCreateSheet_() {
     catch (e) { /* trashed or unreachable — fall through and make a new one */ }
   }
   var ss = SpreadsheetApp.create(SHEET_NAME);
+
+  // Record the id BEFORE filing it. SpreadsheetApp.create drops the file in My
+  // Drive root; if the move then failed we would lose track of it entirely and
+  // mint a duplicate on the next run.
+  props.setProperty('SHEET_ID', ss.getId());
+
   // keep it beside the backups rather than loose in My Drive
   try {
     DriveApp.getFileById(ss.getId()).moveTo(_ensureFolderPath_('Exports'));
   } catch (e) { /* filing is cosmetic; never fail the export over it */ }
-  props.setProperty('SHEET_ID', ss.getId());
   return ss;
 }
 
@@ -188,25 +237,33 @@ function _writeTab_(ss, tabName, cols, rows) {
 }
 
 /** A first tab saying when this was built and what is in it. */
-function _writeStampTab_(ss, summary, total) {
+function _writeStampTab_(ss, summary, total, calls, skipped) {
   var sheet = ss.getSheetByName('About') || ss.insertSheet('About', 0);
   sheet.clear();
   var grid = [
     ['PackMasters Accounts — Zoho export'],
     ['Generated', Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd HH:mm') + ' IST'],
     ['Source', 'Zoho Books org ' + zohoOrgId_() + ' (live read)'],
+    ['API calls', calls == null ? '' : calls],
+    ['Unchanged (skipped)', (skipped && skipped.length) ? skipped.join(', ') : 'none'],
     ['Note', 'Summary columns only. The complete record is the dated JSON in Backups/data/.'],
     [''],
     ['Tab', 'Rows']
   ];
-  summary.forEach(function (s) { grid.push([s.name, s.rows]); });
+  summary.forEach(function (s) {
+    grid.push([s.name + (s.skipped ? '  (unchanged)' : ''), s.rows]);
+  });
   grid.push(['TOTAL', total]);
 
   sheet.getRange(1, 1, grid.length, 2).setValues(grid.map(function (r) {
     return [r[0] || '', r.length > 1 ? r[1] : ''];
   }));
   sheet.getRange(1, 1).setFontWeight('bold');
-  sheet.getRange(6, 1, 1, 2).setFontWeight('bold');
+  // bold the "Tab | Rows" header wherever it landed — its row moves whenever a
+  // metadata line is added above it
+  var hdr = 0;
+  for (var i = 0; i < grid.length; i++) if (grid[i][0] === 'Tab') { hdr = i + 1; break; }
+  if (hdr) sheet.getRange(hdr, 1, 1, 2).setFontWeight('bold');
   sheet.autoResizeColumns(1, 2);
   ss.setActiveSheet(sheet);
 }
