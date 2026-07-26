@@ -367,7 +367,7 @@ Each screen is its own task, ending with a `tests/<screen>.spec.js` that runs LO
 
 - [x] **Step 1:** paginate all modules → JSON → `PackMasters Accounts/Backups/data/<date>.json` via `fileDocument` (verified: 5,856 records / 23 MB).
 - [x] **Step 2:** nightly trigger + "Back up now" button on a settings page.
-- [ ] **Step 3: verify** — run `backupNow`, confirm dated JSON in Drive with expected count (READ-only from Zoho + write to user's own Drive — allowed). **⚠️ NOT DONE. `clasp run` is blocked on this project (default GCP project), so a backup can only be triggered from a browser. The settings page now exposes the button and reports `lastBackup`; the USER must tap "Back up now" once and confirm the dated JSON lands in Drive. Until then the backup path is written and wired, never executed.**
+- [x] **Step 3: verify** — run `backupNow`, confirm dated JSON in Drive with expected count (READ-only from Zoho + write to user's own Drive — allowed). **✅ DONE 2026-07-26. Executed live via a temporary doGet route (since removed): 6,896 records in 108s → Drive file `1rUkQIvdyniQPUHNAb9o_owt5RLLUjBjM` = `Backups/data/2026-07-26.json`, 22.0 MB, valid JSON. Independently re-read through the Drive API: invoices 3854, customerpayments 1039, banktransactions 1037, items 366, purchaseorders 255, contacts 171, bills 142, creditnotes 32, vendorpayments 0. `getBackupStatus` reports lastBackup 2026-07-26 16:51 / 6896 records.**
 - [x] **Step 4: commit** — `git commit -m "feat: nightly + manual backup"`
 
 ---
@@ -425,6 +425,19 @@ this file BEFORE declaring a build complete.
 - Palette gate clean (walks `src/pages/`, so `settings.html` is covered).
 - Deployed **@16**; `?p=settings`, `?p=ledger`, `?p=home` all HTTP 200 with the
   new markup present.
+
+### Second pass (2026-07-26)
+
+- **Task 14 Step 3 CLOSED** — `backupNow` executed live: 6,896 records, 22 MB,
+  verified by re-reading the file back out of Drive. All 48 plan steps now ticked.
+- **Confirm-before-post guard added to scan** — the amount is now an editable
+  field seeded from OCR, and the figure POSTed is the one the user confirmed,
+  not the parsed guess. A red "check before posting" banner lists every field
+  OCR could not establish (amount, date, GST rate, invoice number) plus a
+  failed taxable+tax=total check. Posting is refused outright with an empty
+  amount. The confirm dialog now names the amount as well as the account.
+  This does not make the write paths *verified* — it makes a wrong parse
+  visible before it costs money.
 
 ### Still open — deliberately, and stated plainly
 
