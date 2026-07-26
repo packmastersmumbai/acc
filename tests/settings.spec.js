@@ -100,6 +100,92 @@ test('Clear cache calls cacheBustAll', async ({ page, loadPage }) => {
   expect(await page.evaluate(() => window.__busted)).toBe(true);
 });
 
+// ── Google Sheet export. The 22MB backup JSON is the complete record; the
+// sheet is flat summary tabs you can actually filter.
+
+test('shows sheet export state: never run, schedule off', async ({ page, loadPage }) => {
+  await loadPage('settings');
+  await expect(page.locator('#sheetPill')).toHaveText('Off');
+  await expect(page.locator('#lastExport')).toHaveText('Never run');
+  await expect(page.locator('#sheetLink')).toBeHidden();
+});
+
+test('a previous export shows its row count and a link to the sheet', async ({ page, loadPage }) => {
+  await loadPage('settings', {
+    overrides: {
+      getSheetStatus: 'function(){ return { sheetId:"s1", url:"https://docs.google.com/spreadsheets/d/s1/edit", scheduled:true, lastExport:"2026-07-26 03:00", lastRows:6896 }; }'
+    }
+  });
+  await expect(page.locator('#sheetPill')).toHaveText('On');
+  await expect(page.locator('#lastExport')).toContainText('6896 rows');
+  await expect(page.locator('#sheetLink')).toBeVisible();
+  await expect(page.locator('#sheetLink')).toHaveAttribute('href', /spreadsheets\/d\/s1/);
+});
+
+test('Export now calls exportToSheet and reports rows and tabs', async ({ page, loadPage }) => {
+  await loadPage('settings');
+  await page.evaluate(() => {
+    window.__exported = false;
+    window.__gasOverride('exportToSheet', () => {
+      window.__exported = true;
+      return { spreadsheetId: 's1', url: 'u', records: 6896,
+               tabs: [{ name: 'Contacts', rows: 171 }, { name: 'Invoices', rows: 3854 }] };
+    });
+  });
+
+  await page.locator('#exportBtn').click();
+
+  await expect(page.locator('#sheetStatus')).toContainText('Sheet updated');
+  await expect(page.locator('#sheetStatus')).toContainText('6896 rows');
+  expect(await page.evaluate(() => window.__exported)).toBe(true);
+});
+
+test('a failed export surfaces an error and re-enables the button', async ({ page, loadPage }) => {
+  await loadPage('settings');
+  await page.evaluate(() => {
+    window.__gasOverride('exportToSheet', () => { throw new Error('Sheets quota exceeded'); });
+  });
+
+  await page.locator('#exportBtn').click();
+
+  await expect(page.locator('#sheetStatus')).toContainText('Export failed');
+  await expect(page.locator('#exportBtn')).toBeEnabled();
+});
+
+test('Turn on arms the nightly sheet export', async ({ page, loadPage }) => {
+  await loadPage('settings');
+  await page.evaluate(() => {
+    window.__armed = false;
+    window.__gasOverride('installNightlySheetExport', () => {
+      window.__armed = true;
+      return { scheduled: true, url: null, lastExport: null, lastRows: null };
+    });
+  });
+
+  await page.locator('#sheetSchedBtn').click();
+
+  await expect(page.locator('#sheetPill')).toHaveText('On');
+  expect(await page.evaluate(() => window.__armed)).toBe(true);
+});
+
+test('the two schedules are independent — backup and sheet', async ({ page, loadPage }) => {
+  // Turning the sheet export on must not touch the backup trigger.
+  await loadPage('settings');
+  await page.evaluate(() => {
+    window.__backupTouched = false;
+    window.__gasOverride('installNightlyBackup', () => {
+      window.__backupTouched = true;
+      return { nightly: true, lastBackup: null, lastRecords: null };
+    });
+  });
+
+  await page.locator('#sheetSchedBtn').click();
+  await page.waitForTimeout(300);
+
+  expect(await page.evaluate(() => window.__backupTouched)).toBe(false);
+  await expect(page.locator('#nightlyPill')).toHaveText('Off');
+});
+
 test('settings is reachable from the shared bottom nav', async ({ page, loadPage }) => {
   await loadPage('home');
   await expect(page.locator('#pm-nav [data-go="settings"]')).toBeVisible();

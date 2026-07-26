@@ -91,6 +91,10 @@ const GAS_MOCK_SCRIPT = `
   // Backup / settings state (getBackupStatus)
   var MOCK_BACKUP_STATUS = { nightly: false, lastBackup: null, lastRecords: null };
 
+  // Google Sheet export state (getSheetStatus)
+  var MOCK_SHEET_STATUS = { sheetId: null, url: null, scheduled: false,
+                            lastExport: null, lastRows: null };
+
   // Per-test overrides: window.__gasOverride('parseBill', fn) makes the mock
   // return whatever fn(...args) returns for that method. Cleared on reload.
   window.__gasOverrides = window.__gasOverrides || {};
@@ -138,6 +142,12 @@ const GAS_MOCK_SCRIPT = `
       fileDocument:        function(b64, n, mime, folder) { dispatch('fileDocument', [b64, n, mime, folder], { fileId: 'drive-file-123', url: 'https://drive.google.com/file/d/drive-file-123' }); },
       backupNow:           function()            { dispatch('backupNow', [], { records: 5856, driveFileId: 'backup-2026-07-25' }); },
       getBackupStatus:     function()            { dispatch('getBackupStatus', [], MOCK_BACKUP_STATUS); },
+      getSheetStatus:      function()            { dispatch('getSheetStatus', [], MOCK_SHEET_STATUS); },
+      exportToSheet:       function()            { dispatch('exportToSheet', [], {
+                             spreadsheetId: 'sheet-1', url: 'https://docs.google.com/spreadsheets/d/sheet-1/edit',
+                             records: 6896, tabs: [{name:'Contacts',rows:171},{name:'Invoices',rows:3854}] }); },
+      installNightlySheetExport: function()      { dispatch('installNightlySheetExport', [], { scheduled: true, url: null, lastExport: null, lastRows: null }); },
+      removeNightlySheetExport:  function()      { dispatch('removeNightlySheetExport', [], { scheduled: false, url: null, lastExport: null, lastRows: null }); },
       installNightlyBackup:function()            { dispatch('installNightlyBackup', [], { nightly: true, lastBackup: null, lastRecords: null }); },
       removeNightlyBackup: function()            { dispatch('removeNightlyBackup', [], { nightly: false, lastBackup: null, lastRecords: null }); },
       cacheBustAll:        function()            { dispatch('cacheBustAll', [], { success: true }); },

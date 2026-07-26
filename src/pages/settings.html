@@ -45,6 +45,31 @@
     </div>
   </section>
 
+  <h2 class="mono text-xs uppercase text-[#71717a] tracking-widest mb-2">Google Sheet</h2>
+  <section class="card p-4 mb-6">
+    <div class="flex items-start justify-between mb-3">
+      <div>
+        <div class="mono text-sm">Nightly export</div>
+        <div class="mono text-xs text-[#71717a] mt-0.5">Every day at 03:00 IST → one tab per module</div>
+      </div>
+      <span id="sheetPill" class="pill-off mono text-xs px-2 py-1 uppercase">—</span>
+    </div>
+
+    <div class="hairline-b mb-3"></div>
+
+    <div class="mono text-xs uppercase text-[#71717a]">Last export</div>
+    <div id="lastExport" class="mono text-lg mt-0.5 mb-2">—</div>
+    <a id="sheetLink" target="_blank" rel="noopener"
+       class="hidden mono text-xs text-[#047857] underline mb-3 inline-block">Open the sheet</a>
+
+    <div id="sheetStatus" class="mb-3"></div>
+
+    <div class="flex gap-3">
+      <button id="exportBtn" class="flex-1 btn-primary py-3 mono text-sm uppercase">Export now</button>
+      <button id="sheetSchedBtn" class="flex-1 btn-ghost py-3 mono text-sm uppercase">—</button>
+    </div>
+  </section>
+
   <h2 class="mono text-xs uppercase text-[#71717a] tracking-widest mb-2">Data</h2>
   <section class="card p-4 mb-6">
     <div class="flex items-center justify-between">
@@ -130,6 +155,66 @@
     else          google.script.run.withSuccessHandler(done).withFailureHandler(fail).installNightlyBackup();
   });
 
+  // ── Google Sheet export ──
+  var sheetOn = false;
+
+  function renderSheet(s) {
+    sheetOn = !!(s && s.scheduled);
+    var pill = document.getElementById('sheetPill');
+    pill.textContent = sheetOn ? 'On' : 'Off';
+    pill.className = (sheetOn ? 'pill-on' : 'pill-off') + ' mono text-xs px-2 py-1 uppercase';
+    document.getElementById('sheetSchedBtn').textContent = sheetOn ? 'Turn off' : 'Turn on';
+
+    document.getElementById('lastExport').textContent =
+      (s && s.lastExport)
+        ? s.lastExport + (s.lastRows ? '  ·  ' + s.lastRows + ' rows' : '')
+        : 'Never run';
+
+    var link = document.getElementById('sheetLink');
+    if (s && s.url) { link.href = s.url; link.classList.remove('hidden'); }
+    else link.classList.add('hidden');
+  }
+
+  function loadSheetStatus() {
+    google.script.run
+      .withSuccessHandler(renderSheet)
+      .withFailureHandler(function () {
+        AppStates.error('#sheetStatus', 'Could not read export status', loadSheetStatus);
+      })
+      .getSheetStatus();
+  }
+
+  document.getElementById('exportBtn').addEventListener('click', function () {
+    var btn = this;
+    btn.disabled = true;
+    // Pages every module live from Zoho — minutes, not seconds.
+    AppStates.loading('#sheetStatus', 'Building the sheet — this takes a few minutes…');
+    google.script.run
+      .withSuccessHandler(function (r) {
+        btn.disabled = false;
+        AppStates.empty('#sheetStatus', 'Sheet updated',
+          (r && r.records ? r.records + ' rows' : 'Written') + ' across ' +
+          ((r && r.tabs ? r.tabs.length : 0) + 1) + ' tabs.');
+        loadSheetStatus();
+      })
+      .withFailureHandler(function (e) {
+        btn.disabled = false;
+        AppStates.error('#sheetStatus',
+          'Export failed' + (e && e.message ? ' — ' + e.message : ''), null);
+      })
+      .exportToSheet();
+  });
+
+  document.getElementById('sheetSchedBtn').addEventListener('click', function () {
+    var btn = this;
+    btn.disabled = true;
+    AppStates.loading('#sheetStatus', sheetOn ? 'Removing schedule…' : 'Scheduling…');
+    var done = function (s) { btn.disabled = false; AppStates.clear('#sheetStatus'); renderSheet(s); };
+    var fail = function () { btn.disabled = false; AppStates.error('#sheetStatus', 'Could not change the schedule', null); };
+    if (sheetOn) google.script.run.withSuccessHandler(done).withFailureHandler(fail).removeNightlySheetExport();
+    else        google.script.run.withSuccessHandler(done).withFailureHandler(fail).installNightlySheetExport();
+  });
+
   document.getElementById('cacheBtn').addEventListener('click', function () {
     AppStates.loading('#cacheStatus', 'Clearing…');
     google.script.run
@@ -142,8 +227,9 @@
     document.getElementById('orgId').textContent = id || '—';
   }).withFailureHandler(function(){}).getOrgId();
 
-  document.addEventListener('DOMContentLoaded', loadStatus);
-  if (document.readyState !== 'loading') loadStatus();
+  function loadAll() { loadStatus(); loadSheetStatus(); }
+  document.addEventListener('DOMContentLoaded', loadAll);
+  if (document.readyState !== 'loading') loadAll();
 })();
 </script>
 </body></html>
