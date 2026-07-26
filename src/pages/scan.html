@@ -39,6 +39,15 @@
 
   <!-- Read-from-document -->
   <section id="readSection" class="hidden mt-6">
+    <!-- A BILL is owed to a vendor and settled later; a RECEIPT is money already
+         spent. Different Zoho records — posting a receipt as a bill would leave
+         a payable that never gets paid. -->
+    <div class="flex gap-2 mb-4">
+      <button id="modeBill" class="flex-1 py-2 mono text-xs uppercase tracking-wide border rounded"
+              style="border-color:#047857;background:#047857;color:#fff">Bill (owed)</button>
+      <button id="modeReceipt" class="flex-1 py-2 mono text-xs uppercase tracking-wide border rounded"
+              style="border-color:#e7e5e4;color:#71717a">Receipt (paid)</button>
+    </div>
     <h2 class="mono text-xs text-[#71717a] uppercase tracking-widest mb-2">Read from document</h2>
     <!-- Raised when a field could not be read, or when taxable + tax does not
          equal the total. OCR is best-effort; the user is the check. -->
@@ -65,6 +74,12 @@
       <div class="flex justify-between items-center py-3 hairline-b">
         <span class="mono text-xs text-[#71717a] uppercase">Expense account</span>
         <select id="rAccount" class="mono text-sm bg-transparent text-right border-b border-[#e7e5e4] py-1"></select>
+      </div>
+      <!-- Receipts only: the money has already left an account, so we must say
+           which one. Bills are settled later and have no paid-through. -->
+      <div id="paidThroughRow" class="hidden flex justify-between items-center py-3 hairline-b">
+        <span class="mono text-xs text-[#71717a] uppercase">Paid through</span>
+        <select id="rPaidThrough" class="mono text-sm bg-transparent text-right border-b border-[#e7e5e4] py-1"></select>
       </div>
       <div id="rDocRow" class="hidden flex justify-between items-center py-3 hairline-b">
         <span class="mono text-xs text-[#71717a] uppercase">Document</span>
@@ -117,6 +132,38 @@
   var parsed = null, matched = null, archivedUrl = null;
 
   function show(id, on) { document.getElementById(id).classList.toggle('hidden', !on); }
+
+  // 'bill' = owed to a vendor (postBill) | 'receipt' = already paid (postExpense)
+  var mode = 'bill';
+
+  function setMode(next) {
+    mode = next;
+    var on  = 'border-color:#047857;background:#047857;color:#fff';
+    var off = 'border-color:#e7e5e4;color:#71717a';
+    document.getElementById('modeBill').style.cssText    = (mode === 'bill')    ? on : off;
+    document.getElementById('modeReceipt').style.cssText = (mode === 'receipt') ? on : off;
+    show('paidThroughRow', mode === 'receipt');
+    document.getElementById('postBtn').textContent =
+      mode === 'receipt' ? 'Record expense' : 'Post bill to Zoho';
+    // A receipt needs no supplier match — the shop is rarely a Zoho contact.
+    show('actionBar', !!parsed);
+    renderMatch(matched);
+  }
+
+  document.getElementById('modeBill').addEventListener('click', function () { setMode('bill'); });
+  document.getElementById('modeReceipt').addEventListener('click', function () { setMode('receipt'); });
+
+  function loadPaidThrough() {
+    google.script.run
+      .withSuccessHandler(function (accts) {
+        document.getElementById('rPaidThrough').innerHTML = (accts || []).map(function (a) {
+          return '<option value="' + a.id + '">' + a.name + '</option>';
+        }).join('');
+      })
+      .withFailureHandler(function () { /* postExpense falls back to Petty Cash */ })
+      .getPaidThroughAccounts();
+  }
+  loadPaidThrough();
 
   // Expense accounts come from the server (default first) so the posting
   // account is visible and changeable BEFORE the bill is written to Zoho.
@@ -178,7 +225,9 @@
         (m.contact_type || 'party') + ' · ' + (m.gst_no || '') + ' · ' + inr(m.outstanding || 0) + ' open';
       show('matchedSection', true); show('noMatchSection', false);
     } else {
-      show('noMatchSection', true); show('matchedSection', false);
+      // A receipt's shop is rarely a Zoho contact, and an expense does not need
+      // one — so "no matching party" is only a problem when posting a bill.
+      show('noMatchSection', mode === 'bill'); show('matchedSection', false);
     }
     show('actionBar', true);
   }
@@ -235,7 +284,8 @@
 
   document.getElementById('postBtn').addEventListener('click', function () {
     if (!parsed) return;
-    if (!matched) {
+    // Only a BILL needs a matched vendor — an expense stands alone.
+    if (mode === 'bill' && !matched) {
       AppStates.error('#statusHost', 'Create or match a supplier before posting', null);
       return;
     }
@@ -254,36 +304,65 @@
     // This WRITES to Zoho — confirm explicitly, naming the amount and the
     // account charged, since a miscoded bill is invisible until reconciliation.
     var warn = document.getElementById('checkWarn').classList.contains('hidden')
-      ? '' : '\n\n⚠ Some fields could not be verified — check the bill.';
-    if (!window.confirm('Post this bill to Zoho?\n\nSupplier: ' + matched.contact_name +
-                        '\nAmount: ₹' + amount.toFixed(2) +
-                        '\nAccount: ' + acctName + warn)) return;
+      ? '' : '\n\n⚠ Some fields could not be verified — check the document.';
+
+    var ptSel = document.getElementById('rPaidThrough');
+    var ptName = (mode === 'receipt' && ptSel.options[ptSel.selectedIndex])
+      ? ptSel.options[ptSel.selectedIndex].text : '';
+
+    var msg = (mode === 'receipt')
+      ? ('Record this expense in Zoho?\n\nAmount: ₹' + amount.toFixed(2) +
+         '\nAccount: ' + acctName + '\nPaid through: ' + ptName +
+         (matched ? '\nVendor: ' + matched.contact_name : '') + warn)
+      : ('Post this bill to Zoho?\n\nSupplier: ' + matched.contact_name +
+         '\nAmount: ₹' + amount.toFixed(2) + '\nAccount: ' + acctName + warn);
+    if (!window.confirm(msg)) return;
 
     var btn = this;
     btn.disabled = true;
-    AppStates.loading('#statusHost', 'Posting bill…');
-    google.script.run
+    var noun = (mode === 'receipt') ? 'expense' : 'bill';
+    AppStates.loading('#statusHost', 'Recording ' + noun + '…');
+
+    var runner = google.script.run
       .withSuccessHandler(function (r) {
-        AppStates.empty('#statusHost', 'Bill posted',
-          'Zoho bill ' + (r && r.bill_id ? r.bill_id : '') + ' created.');
+        AppStates.empty('#statusHost',
+          (mode === 'receipt') ? 'Expense recorded' : 'Bill posted',
+          'Zoho ' + noun + ' ' +
+          ((r && (r.expense_id || r.bill_id)) || '') + ' created.');
         show('actionBar', false);
       })
       .withFailureHandler(function (e) {
         btn.disabled = false;
         AppStates.error('#statusHost',
-          'Could not post the bill' + (e && e.message ? ' — ' + e.message : ''), null);
-      })
-      .postBill({
+          'Could not record the ' + noun + (e && e.message ? ' — ' + e.message : ''), null);
+      });
+
+    if (mode === 'receipt') {
+      runner.postExpense({
+        amount: amount,                       // user-confirmed, not the OCR guess
+        accountId: acctId,
+        paidThroughId: document.getElementById('rPaidThrough').value,
+        date: parsed.date || new Date().toISOString().slice(0, 10),
+        vendorId: matched ? matched.contact_id : null,   // optional for a receipt
+        reference: parsed.invoiceNo || '',
+        description: parsed.supplier || 'Receipt',
+        gstPct: parsed.gstPct,
+        inter: !!parsed.inter,
+        scanUrl: archivedUrl
+      });
+    } else {
+      runner.postBill({
         vendorId: matched.contact_id,
         billNumber: parsed.invoiceNo,
         date: parsed.date || new Date().toISOString().slice(0, 10),
-        amount: amount,                 // user-confirmed, not the OCR guess
+        amount: amount,
         gstPct: parsed.gstPct,
         inter: !!parsed.inter,
         description: parsed.description || 'Goods',
         expenseAccountId: acctId,
         scanUrl: archivedUrl          // links the Zoho bill back to the Drive file
       });
+    }
   });
 
   document.getElementById('createVendorBtn').addEventListener('click', function () {

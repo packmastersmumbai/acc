@@ -124,6 +124,10 @@ const GAS_MOCK_SCRIPT = `
       matchContactByGstin: function(gstin)       { dispatch('matchContactByGstin', [gstin], gstin === '27AABFY9773F1ZN' ? MOCK_MATCH : null); },
       createContact:       function(obj)         { dispatch('createContact', [obj], { success: true, contact_id: '116000000099999', contact_name: obj && obj.contact_name }); },
       postBill:            function(obj)         { dispatch('postBill', [obj], { success: true, bill_id: '116000000088888' }); },
+      postExpense:         function(obj)         { dispatch('postExpense', [obj], { success: true, expense_id: '116000000077001', amount: obj && obj.amount }); },
+      getPaidThroughAccounts: function()         { dispatch('getPaidThroughAccounts', [], [
+                             { id: '1161923000000000361', name: 'Petty Cash' },
+                             { id: '1161923000000540009', name: 'PACK MASTERS (Axis)' }]); },
       markInvoicePaid:     function(obj)         { dispatch('markInvoicePaid', [obj], { success: true, payment_id: '116000000077777', applied: true }); },
       payVendorBill:       function(obj)         { dispatch('payVendorBill', [obj], { success: true, payment_id: '116000000066666' }); },
       uncategorized:       function(acctId)      { dispatch('uncategorized', [acctId], MOCK_UNCAT); },

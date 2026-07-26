@@ -264,6 +264,93 @@ test('a fully-read bill shows no warning', async ({ page, loadPage }) => {
   await expect(page.locator('#rGst')).toHaveText('18%');
 });
 
+// ── Receipt mode. A BILL is owed to a vendor and settled later; a RECEIPT is
+// money already spent. Posting a receipt as a bill would create a payable that
+// is never paid, so they are separate Zoho records.
+
+test('receipt mode records an expense, not a bill', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await page.evaluate(() => {
+    window.__billed = null; window.__expensed = null;
+    window.__gasOverride('postBill', (o) => { window.__billed = o; return { success: true, bill_id: 'B1' }; });
+    window.__gasOverride('postExpense', (o) => { window.__expensed = o; return { success: true, expense_id: 'E1' }; });
+  });
+  await driveScan(page);
+
+  await page.locator('#modeReceipt').click();
+  page.once('dialog', (d) => d.accept());
+  await page.locator('#postBtn').click();
+
+  await expect.poll(() => page.evaluate(() => window.__expensed)).toBeTruthy();
+  expect(await page.evaluate(() => window.__billed)).toBe(null);   // never a bill
+  await expect(page.locator('#statusHost')).toContainText('Expense recorded');
+});
+
+test('a receipt carries its paid-through account', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await page.evaluate(() => {
+    window.__gasOverride('postExpense', (o) => { window.__expensed = o; return { success: true, expense_id: 'E1' }; });
+  });
+  await driveScan(page);
+  await page.locator('#modeReceipt').click();
+
+  // Petty Cash is the default — the common receipt case
+  await expect(page.locator('#rPaidThrough')).toHaveValue('1161923000000000361');
+  await page.locator('#rPaidThrough').selectOption('1161923000000540009');
+
+  page.once('dialog', (d) => d.accept());
+  await page.locator('#postBtn').click();
+
+  const sent = await page.evaluate(() => window.__expensed);
+  expect(sent.paidThroughId).toBe('1161923000000540009');
+  expect(sent.amount).toBe(174378);
+});
+
+test('paid-through is hidden for a bill and shown for a receipt', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await driveScan(page);
+  await expect(page.locator('#paidThroughRow')).toBeHidden();
+  await page.locator('#modeReceipt').click();
+  await expect(page.locator('#paidThroughRow')).toBeVisible();
+  await page.locator('#modeBill').click();
+  await expect(page.locator('#paidThroughRow')).toBeHidden();
+});
+
+test('a receipt posts without a matched supplier', async ({ page, loadPage }) => {
+  // The shop on a fuel or courier receipt is rarely a Zoho contact.
+  await loadPage('scan');
+  await page.evaluate(() => {
+    window.__expensed = null;
+    window.__gasOverride('matchContactByGstin', () => null);
+    window.__gasOverride('postExpense', (o) => { window.__expensed = o; return { success: true, expense_id: 'E1' }; });
+  });
+  await driveScan(page);
+
+  await page.locator('#modeReceipt').click();
+  await expect(page.locator('#noMatchSection')).toBeHidden();   // not an error here
+
+  page.once('dialog', (d) => d.accept());
+  await page.locator('#postBtn').click();
+
+  const sent = await page.evaluate(() => window.__expensed);
+  expect(sent).toBeTruthy();
+  expect(sent.vendorId).toBe(null);
+});
+
+test('a BILL still demands a matched supplier', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await page.evaluate(() => {
+    window.__posted = false;
+    window.__gasOverride('matchContactByGstin', () => null);
+    window.__gasOverride('postBill', () => { window.__posted = true; return { success: true }; });
+  });
+  await driveScan(page);
+
+  await page.locator('#postBtn').click();
+  await expect(page.locator('#statusHost')).toContainText('Create or match a supplier');
+  expect(await page.evaluate(() => window.__posted)).toBe(false);
+});
+
 test('posting is refused without a matched supplier', async ({ page, loadPage }) => {
   await loadPage('scan');
   await page.evaluate(() => {
