@@ -119,6 +119,50 @@ test('vendor ledger never calls markInvoicePaid', async ({ page, loadPage }) => 
   expect(await page.evaluate(() => window.__wrongCall)).toBe(false);
 });
 
+// Plan Task 12: "short-payment shows TDS-clears-in-full line".
+test('entering TDS spells out the split before anything is posted', async ({ page, loadPage }) => {
+  await loadPage('ledger', { query: 'id=116000000071027' });
+  await page.locator('.markBtn').first().click();          // INV-002841, 195511
+
+  await expect(page.locator('#tdsNote')).toBeHidden();
+  await page.locator('#tdsInput').fill('2000');
+
+  await expect(page.locator('#tdsNote')).toBeVisible();
+  await expect(page.locator('#tdsNote')).toContainText('₹1,93,511');   // cash in
+  await expect(page.locator('#tdsNote')).toContainText('clears in full');
+  await expect(page.locator('#tdsNote')).toContainText('TDS Receivable');
+});
+
+test('the TDS figure reaches markInvoicePaid', async ({ page, loadPage }) => {
+  await loadPage('ledger', { query: 'id=116000000071027' });
+  await page.evaluate(() => {
+    window.__paidWith = null;
+    window.__gasOverride('markInvoicePaid', (obj) => { window.__paidWith = obj; return { success: true }; });
+  });
+
+  await page.locator('.markBtn').first().click();
+  await page.locator('#tdsInput').fill('2000');
+  page.once('dialog', (d) => d.accept());
+  await page.locator('#confirmBtn').click();
+
+  const paid = await page.evaluate(() => window.__paidWith);
+  expect(paid.tdsAmount).toBe(2000);
+});
+
+test('TDS at or above the invoice is refused by the screen too', async ({ page, loadPage }) => {
+  await loadPage('ledger', { query: 'id=116000000071027' });
+  await page.locator('.markBtn').first().click();
+  await page.locator('#tdsInput').fill('999999');          // exceeds 195511
+  await expect(page.locator('#tdsNote')).toBeHidden();
+});
+
+test('a vendor bill offers no TDS box', async ({ page, loadPage }) => {
+  // TDS deduction is a customer-side concept in this flow.
+  await loadPage('ledger', { query: 'id=116000000618777' });
+  await page.locator('.markBtn').first().click();
+  await expect(page.locator('#tdsRow')).toBeHidden();
+});
+
 test('short-payment note: overdue invoice shows the red overdue pill (TDS/partial context)', async ({ page, loadPage }) => {
   await loadPage('ledger', { query: 'id=116000000071027' });
   await expect(page.locator('#invoiceHost')).toContainText('overdue');

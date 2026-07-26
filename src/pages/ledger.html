@@ -44,7 +44,21 @@ window.__qs = JSON.parse('<?!= JSON.stringify(qs) ?>');</script>
   <div class="sheet-body max-w-3xl mx-auto">
     <div class="mono text-xs uppercase text-[#71717a]">Mark paid</div>
     <div id="sheetInv" class="mono text-lg mt-1 mb-1"></div>
-    <div id="sheetAmt" class="mono text-2xl mb-4"></div>
+    <div id="sheetAmt" class="mono text-2xl mb-3"></div>
+
+    <!-- TDS: the customer deducts tax at source, so cash received is less than
+         the invoice while the invoice still clears in full. Customers only. -->
+    <div id="tdsRow" class="mb-3">
+      <label class="flex items-center justify-between py-2 hairline-b">
+        <span class="mono text-xs uppercase text-[#71717a]">TDS deducted</span>
+        <span class="flex items-center gap-1">
+          <span class="mono text-sm text-[#71717a]">₹</span>
+          <input id="tdsInput" type="text" inputmode="decimal" placeholder="0.00"
+                 class="mono text-sm bg-transparent text-right border-b border-[#e7e5e4] w-28 py-1 focus:border-[#047857] outline-none"/>
+        </span>
+      </label>
+      <div id="tdsNote" class="hidden mono text-xs text-[#047857] mt-2"></div>
+    </div>
     <label for="proofInput" class="w-full flex items-center p-3 border border-dashed border-[#047857]/40 rounded-lg cursor-pointer mb-4">
       <span class="material-symbols-outlined text-[#047857] mr-2">attach_file</span>
       <span id="proofLabel" class="text-sm text-[#047857]">Attach payment proof (optional)</span>
@@ -105,8 +119,31 @@ window.__qs = JSON.parse('<?!= JSON.stringify(qs) ?>');</script>
     });
   }
 
+  /** The TDS the user typed, validated the same way the server will. */
+  function enteredTds() {
+    var v = String(document.getElementById('tdsInput').value || '').replace(/[^\d.]/g, '');
+    var n = parseFloat(v);
+    if (isNaN(n) || n <= 0) return 0;
+    if (current && n >= current.bal) return 0;   // cannot exceed the invoice
+    return Math.round(n * 100) / 100;
+  }
+
+  /** Spell out the split, so a short payment never looks like an underpayment. */
+  function renderTdsNote() {
+    var note = document.getElementById('tdsNote');
+    var tds = enteredTds();
+    if (!current || tds <= 0) { note.classList.add('hidden'); return; }
+    note.textContent = 'Receiving ' + inr(current.bal - tds) + ' — invoice clears in full; ' +
+                       inr(tds) + ' books to TDS Receivable.';
+    note.classList.remove('hidden');
+  }
+
   function openSheet(id, num, bal) {
     current = { id: id, num: num, bal: bal }; proof = null;
+    // Vendors are paid in full; TDS deduction is a customer-side concept here.
+    document.getElementById('tdsRow').classList.toggle('hidden', side === 'vendor');
+    document.getElementById('tdsInput').value = '';
+    document.getElementById('tdsNote').classList.add('hidden');
     document.querySelector('#sheet .mono.text-xs').textContent = side === 'vendor' ? 'Pay bill' : 'Mark paid';
     document.getElementById('confirmBtn').textContent = side === 'vendor' ? 'Confirm payment' : 'Confirm paid';
     document.getElementById('sheetInv').textContent = num;
@@ -117,6 +154,7 @@ window.__qs = JSON.parse('<?!= JSON.stringify(qs) ?>');</script>
   }
   function closeSheet(){ document.getElementById('sheet').classList.remove('open'); }
 
+  document.getElementById('tdsInput').addEventListener('input', renderTdsNote);
   document.getElementById('cancelBtn').addEventListener('click', closeSheet);
   document.getElementById('proofInput').addEventListener('change', function (e) {
     if (!e.target.files || !e.target.files[0]) return;
@@ -129,9 +167,17 @@ window.__qs = JSON.parse('<?!= JSON.stringify(qs) ?>');</script>
     if (!current) return;
 
     // This WRITES money to Zoho. Confirm with the amount named — a misapplied
-    // payment is invisible until the party disputes it.
-    if (!window.confirm((side === 'vendor' ? 'Pay this bill?' : 'Mark this invoice paid?') +
-                        '\n\n' + current.num + '\n' + inr(current.bal))) return;
+    // payment is invisible until the party disputes it. When TDS is deducted,
+    // name BOTH figures so the split is explicit before it is booked.
+    var tds = (side === 'vendor') ? 0 : enteredTds();
+    var msg = (side === 'vendor' ? 'Pay this bill?' : 'Mark this invoice paid?') +
+              '\n\n' + current.num + '\n' + inr(current.bal);
+    if (tds > 0) {
+      msg += '\n\nTDS deducted: ' + inr(tds) +
+             '\nCash received: ' + inr(current.bal - tds) +
+             '\nInvoice clears in full.';
+    }
+    if (!window.confirm(msg)) return;
 
     var btn = this;
     btn.disabled = true;
@@ -158,7 +204,7 @@ window.__qs = JSON.parse('<?!= JSON.stringify(qs) ?>');</script>
         .payVendorBill({ vendorId: partyId, billId: current.id, amount: current.bal });
     } else {
       google.script.run.withSuccessHandler(onDone).withFailureHandler(onFail)
-        .markInvoicePaid({ invoiceId: current.id });
+        .markInvoicePaid({ invoiceId: current.id, tdsAmount: tds });
     }
   });
 

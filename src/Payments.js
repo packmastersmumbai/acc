@@ -11,27 +11,61 @@
  * in the session audit. Depends on zohoGet/zohoPost.
  */
 
+/** Zoho's TDS Receivable account for this org (verified in the chart). */
+var TDS_RECEIVABLE_ACCOUNT_ID = '1161923000001082001';
+
 /**
- * Mark an EXISTING invoice paid in full via a customer payment. Reads balance
- * live, applies exactly that. (Does NOT create invoices — descoped.)
- * obj: {invoiceId, paymentMode?, date?, reference?}
+ * Mark an EXISTING invoice paid via a customer payment. Reads the balance live
+ * and applies exactly that. (Does NOT create invoices — descoped.)
+ *
+ * TDS: an Indian customer deducts tax at source, so the cash received is LESS
+ * than the invoice balance while the invoice must still clear in full. Zoho
+ * models this as `tax_amount_withheld` + `tax_account_id` on the payment —
+ * shape verified against real payments in this org (e.g. #124: amount 710661,
+ * tax_amount_withheld 603, TDS Receivable). Without it, passing only the cash
+ * received would leave every TDS invoice short-paid and permanently open.
+ *
+ * obj: {invoiceId, paymentMode?, date?, reference?, tdsAmount?}
  */
 function markInvoicePaid(obj) {
   var inv = zohoGet('invoices/' + obj.invoiceId).invoice;
   var balance = parseFloat(inv.balance || 0);
   if (balance <= 0) return { success: true, alreadyPaid: true, applied: 0 };
 
+  var tds = _validTds_(obj.tdsAmount, balance);
+  var received = balance - tds;   // cash in hand; the invoice still clears fully
+
   var body = {
     customer_id: inv.customer_id,
     payment_mode: obj.paymentMode || 'Bank Transfer',
     date: obj.date || _todayIso_(),
-    amount: balance,
+    amount: received,
     reference_number: String(obj.reference || '').slice(0, 45),
     invoices: [{ invoice_id: obj.invoiceId, amount_applied: balance }]
   };
+
+  if (tds > 0) {
+    body.tax_amount_withheld = tds;
+    body.tax_account_id = TDS_RECEIVABLE_ACCOUNT_ID;
+    body.tds_type = 'income_tds';
+  }
+
   var res = zohoPost('customerpayments', body);
   cacheBustAll();  // payment moves receivable/overdue
-  return { success: true, payment_id: res.payment.payment_id, applied: balance };
+  return { success: true, payment_id: res.payment.payment_id,
+           applied: balance, received: received, tds: tds };
+}
+
+/**
+ * A usable TDS figure, or 0. Rejects anything that cannot be a real deduction —
+ * a bad value here would silently under-apply the payment and leave the invoice
+ * open, which is exactly the failure this feature exists to prevent.
+ */
+function _validTds_(raw, balance) {
+  var n = parseFloat(raw);
+  if (isNaN(n) || n <= 0) return 0;
+  if (n >= balance) return 0;   // TDS can never equal or exceed the invoice
+  return Math.round(n * 100) / 100;
 }
 
 /**
