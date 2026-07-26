@@ -199,6 +199,71 @@ test('cancelling the confirm writes nothing to Zoho', async ({ page, loadPage })
   expect(await page.evaluate(() => window.__posted)).toBe(false);
 });
 
+// ── Confirm-before-post guard. OCR is best-effort; a wrong total posts real
+// money, so the amount is editable and the USER's figure is what gets sent.
+
+test('the amount is editable and the users figure is what posts', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await page.evaluate(() => {
+    window.__gasOverride('postBill', (obj) => { window.__billed = obj; return { success: true, bill_id: 'B1' }; });
+  });
+  await driveScan(page);
+
+  // OCR read 174378; the user corrects it against the paper bill
+  await expect(page.locator('#rAmount')).toHaveValue('174378.00');
+  await page.locator('#rAmount').fill('51212.00');
+
+  page.once('dialog', (d) => d.accept());
+  await page.locator('#postBtn').click();
+
+  await expect.poll(() => page.evaluate(() => window.__billed)).toBeTruthy();
+  expect(await page.evaluate(() => window.__billed.amount)).toBe(51212);
+});
+
+test('posting is refused when the amount box is empty', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await page.evaluate(() => {
+    window.__posted = false;
+    window.__gasOverride('postBill', () => { window.__posted = true; return { success: true }; });
+  });
+  await driveScan(page);
+
+  await page.locator('#rAmount').fill('');
+  await page.locator('#postBtn').click();
+
+  await expect(page.locator('#statusHost')).toContainText('Enter the bill amount');
+  expect(await page.evaluate(() => window.__posted)).toBe(false);
+});
+
+test('unreadable fields raise a check-before-posting warning', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await page.evaluate(() => {
+    window.__gasOverride('parseBill', () =>
+      ({ supplier: 'Yash Poly Plast', gstin: '27AABFY9773F1ZN', invoiceNo: null,
+         amount: null, gstPct: null, date: null, checksOut: false }));
+  });
+  await driveScan(page);
+
+  await expect(page.locator('#checkWarn')).toBeVisible();
+  await expect(page.locator('#checkWarnText')).toContainText('amount could not be read');
+  await expect(page.locator('#checkWarnText')).toContainText('does not equal the total');
+  await expect(page.locator('#rAmount')).toHaveValue('');
+});
+
+test('a fully-read bill shows no warning', async ({ page, loadPage }) => {
+  await loadPage('scan');
+  await page.evaluate(() => {
+    window.__gasOverride('parseBill', () =>
+      ({ supplier: 'Yash Poly Plast', gstin: '27AABFY9773F1ZN', invoiceNo: 'YPP/1',
+         amount: 1000, gstPct: 18, date: '2026-07-04', checksOut: true }));
+  });
+  await driveScan(page);
+
+  await expect(page.locator('#checkWarn')).toBeHidden();
+  await expect(page.locator('#rDate')).toHaveText('2026-07-04');
+  await expect(page.locator('#rGst')).toHaveText('18%');
+});
+
 test('posting is refused without a matched supplier', async ({ page, loadPage }) => {
   await loadPage('scan');
   await page.evaluate(() => {

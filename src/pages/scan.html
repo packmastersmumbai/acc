@@ -40,11 +40,28 @@
   <!-- Read-from-document -->
   <section id="readSection" class="hidden mt-6">
     <h2 class="mono text-xs text-[#71717a] uppercase tracking-widest mb-2">Read from document</h2>
+    <!-- Raised when a field could not be read, or when taxable + tax does not
+         equal the total. OCR is best-effort; the user is the check. -->
+    <div id="checkWarn" class="hidden mb-3 p-3 rounded border border-[#ba1a1a]/30 bg-[#ba1a1a]/5">
+      <div class="mono text-xs uppercase tracking-widest text-[#ba1a1a] mb-1">Check before posting</div>
+      <div id="checkWarnText" class="text-[13px] text-[#71717a]"></div>
+    </div>
     <div class="border-t border-[#e7e5e4]">
       <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">Supplier</span><span id="rSupplier" class="mono text-sm"></span></div>
       <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">GSTIN</span><span id="rGstin" class="mono text-sm"></span></div>
       <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">Invoice</span><span id="rInvoice" class="mono text-sm"></span></div>
-      <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">Amount</span><span id="rAmount" class="mono text-base"></span></div>
+      <!-- Amount is EDITABLE: OCR is the likeliest field to be wrong, and a
+           wrong total posts real money. The user confirms it, never the app. -->
+      <div class="flex justify-between items-center py-3 hairline-b">
+        <span class="mono text-xs text-[#71717a] uppercase">Amount</span>
+        <span class="flex items-center gap-1">
+          <span class="mono text-base text-[#71717a]">₹</span>
+          <input id="rAmount" type="text" inputmode="decimal"
+                 class="mono text-base bg-transparent text-right border-b border-[#e7e5e4] w-40 py-1 focus:border-[#047857] outline-none"/>
+        </span>
+      </div>
+      <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">Date</span><span id="rDate" class="mono text-sm"></span></div>
+      <div class="flex justify-between py-3 hairline-b"><span class="mono text-xs text-[#71717a] uppercase">GST</span><span id="rGst" class="mono text-sm"></span></div>
       <div class="flex justify-between items-center py-3 hairline-b">
         <span class="mono text-xs text-[#71717a] uppercase">Expense account</span>
         <select id="rAccount" class="mono text-sm bg-transparent text-right border-b border-[#e7e5e4] py-1"></select>
@@ -120,8 +137,38 @@
     document.getElementById('rSupplier').textContent = p.supplier || '—';
     document.getElementById('rGstin').textContent = p.gstin || '—';
     document.getElementById('rInvoice').textContent = p.invoiceNo || '—';
-    document.getElementById('rAmount').textContent = p.amount != null ? inr(p.amount, { paise: true }) : '—';
+    document.getElementById('rDate').textContent = p.date || 'today (not read)';
+    document.getElementById('rGst').textContent = p.gstPct != null ? p.gstPct + '%' : '—';
+    // Plain digits, so the user can correct it without fighting formatting.
+    document.getElementById('rAmount').value = p.amount != null ? p.amount.toFixed(2) : '';
+    renderWarnings(p);
     show('readSection', true);
+  }
+
+  // Every field OCR could not establish, plus the arithmetic check. Posting is
+  // never blocked — the user may know better than the parser — but nothing
+  // uncertain is allowed to look confirmed.
+  function renderWarnings(p) {
+    var w = [];
+    if (p.amount == null) w.push('the amount could not be read — type it in');
+    if (p.checksOut === false) w.push('taxable + tax does not equal the total');
+    if (!p.date) w.push('no invoice date found — today will be used');
+    if (p.gstPct == null) w.push('GST rate not found');
+    if (!p.invoiceNo) w.push('no invoice number found');
+
+    var host = document.getElementById('checkWarn');
+    if (!w.length) { host.classList.add('hidden'); return; }
+    document.getElementById('checkWarnText').textContent =
+      w.join('; ') + '. Verify against the bill before posting.';
+    host.classList.remove('hidden');
+  }
+
+  /** The amount the USER confirmed, not the one OCR guessed. */
+  function enteredAmount() {
+    var v = String(document.getElementById('rAmount').value || '').replace(/[^\d.\-]/g, '');
+    if (!v) return null;
+    var n = parseFloat(v);
+    return isNaN(n) ? null : n;
   }
 
   function renderMatch(m) {
@@ -196,10 +243,21 @@
     var acctId = sel.value;
     var acctName = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
 
-    // This WRITES to Zoho — confirm explicitly, naming the account being
-    // charged, since a miscoded bill is invisible until reconciliation.
+    // The amount the user confirmed on screen wins over the parsed one.
+    var amount = enteredAmount();
+    if (amount === null || amount <= 0) {
+      AppStates.error('#statusHost', 'Enter the bill amount before posting', null);
+      document.getElementById('rAmount').focus();
+      return;
+    }
+
+    // This WRITES to Zoho — confirm explicitly, naming the amount and the
+    // account charged, since a miscoded bill is invisible until reconciliation.
+    var warn = document.getElementById('checkWarn').classList.contains('hidden')
+      ? '' : '\n\n⚠ Some fields could not be verified — check the bill.';
     if (!window.confirm('Post this bill to Zoho?\n\nSupplier: ' + matched.contact_name +
-                        '\nAccount: ' + acctName)) return;
+                        '\nAmount: ₹' + amount.toFixed(2) +
+                        '\nAccount: ' + acctName + warn)) return;
 
     var btn = this;
     btn.disabled = true;
@@ -219,7 +277,7 @@
         vendorId: matched.contact_id,
         billNumber: parsed.invoiceNo,
         date: parsed.date || new Date().toISOString().slice(0, 10),
-        amount: parsed.amount,
+        amount: amount,                 // user-confirmed, not the OCR guess
         gstPct: parsed.gstPct,
         inter: !!parsed.inter,
         description: parsed.description || 'Goods',

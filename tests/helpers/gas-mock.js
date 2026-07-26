@@ -54,7 +54,8 @@ const GAS_MOCK_SCRIPT = `
   // Parsed bill from OCR (parseBill)
   var MOCK_PARSE = {
     supplier: 'Yash Poly Plast', gstin: '27AABFY9773F1ZN',
-    invoiceNo: 'YPP/24-25/1182', amount: 174378, gstPct: 18
+    invoiceNo: 'YPP/24-25/1182', amount: 174378, gstPct: 18,
+    date: '2026-07-04', taxable: 147778, taxAmount: 26600, checksOut: true
   };
 
   // Party ledger (getPartyLedger). The server is side-aware: customers carry
