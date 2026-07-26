@@ -27,6 +27,32 @@ test('a daily interval reads as "Every day", not "Every 1 days"', async ({ page,
   await expect(page.locator('#backupCadence')).toHaveText('Every day at 02:00 IST → Drive');
 });
 
+// The JSON backup NAMES attachments but does not contain them. Reporting the
+// files separately stops "backed up" being read as covering documents.
+test('document backup state is reported separately from the data backup', async ({ page, loadPage }) => {
+  await loadPage('settings');
+  await expect(page.locator('#lastDocBackup')).toHaveText('Documents: not yet copied');
+});
+
+test('after a document run it reports how many attachments are held', async ({ page, loadPage }) => {
+  await loadPage('settings', {
+    overrides: {
+      getBackupStatus: 'function(){ return { nightly:true, everyDays:3, lastBackup:"2026-07-26 02:00", lastRecords:6896, documents:{ lastBackup:"2026-07-26 02:04", saved:2, total:5 } }; }'
+    }
+  });
+  await expect(page.locator('#lastDocBackup')).toContainText('5 attachments');
+  await expect(page.locator('#lastDocBackup')).toContainText('2 new last run');
+});
+
+test('one attachment reads as singular', async ({ page, loadPage }) => {
+  await loadPage('settings', {
+    overrides: {
+      getBackupStatus: 'function(){ return { nightly:false, everyDays:3, lastBackup:null, lastRecords:null, documents:{ lastBackup:"2026-07-26 02:04", saved:1, total:1 } }; }'
+    }
+  });
+  await expect(page.locator('#lastDocBackup')).toContainText('1 attachment in Drive');
+});
+
 test('reports a previous backup with its record count', async ({ page, loadPage }) => {
   await loadPage('settings', {
     overrides: {

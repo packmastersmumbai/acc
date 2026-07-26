@@ -35,7 +35,8 @@
     <div class="hairline-b mb-3"></div>
 
     <div class="mono text-xs uppercase text-[#71717a]">Last backup</div>
-    <div id="lastBackup" class="mono text-lg mt-0.5 mb-4">—</div>
+    <div id="lastBackup" class="mono text-lg mt-0.5 mb-1">—</div>
+    <div id="lastDocBackup" class="mono text-xs text-[#71717a] mb-4">—</div>
 
     <div id="backupStatus" class="mb-3"></div>
 
@@ -119,6 +120,15 @@
       (s && s.lastBackup)
         ? s.lastBackup + (s.lastRecords ? '  ·  ' + s.lastRecords + ' records' : '')
         : 'Never run';
+
+    // The JSON names attachments but does not contain them; report the files
+    // separately so "backed up" is not read as covering documents when it does not.
+    var d = s && s.documents;
+    document.getElementById('lastDocBackup').textContent =
+      (d && d.lastBackup)
+        ? 'Documents: ' + (d.total || 0) + ' attachment' + ((d.total === 1) ? '' : 's') +
+          ' in Drive (' + (d.saved || 0) + ' new last run)'
+        : 'Documents: not yet copied';
   }
 
   function loadStatus() {

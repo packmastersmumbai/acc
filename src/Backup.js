@@ -51,7 +51,14 @@ function backupNow() {
     LAST_BACKUP_RECORDS: String(total)
   });
 
-  return { records: total, driveFileId: filed.fileId };
+  // The goal is "data + documents". The JSON names the attachments but does
+  // not contain them, so pull the files too. Best-effort: a document failure
+  // must not discard a data backup that already succeeded.
+  var docs = null;
+  try { docs = backupDocuments(); }
+  catch (e) { docs = { error: String((e && e.message) || e).slice(0, 200) }; }
+
+  return { records: total, driveFileId: filed.fileId, documents: docs };
 }
 
 /**
@@ -114,6 +121,7 @@ function getBackupStatus() {
     nightly: nightly,
     everyDays: _backupInterval_(),
     lastBackup: last || null,
-    lastRecords: recs ? parseInt(recs, 10) : null
+    lastRecords: recs ? parseInt(recs, 10) : null,
+    documents: getDocBackupStatus()
   };
 }

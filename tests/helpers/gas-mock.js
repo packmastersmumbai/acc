@@ -89,7 +89,8 @@ const GAS_MOCK_SCRIPT = `
   ];
 
   // Backup / settings state (getBackupStatus)
-  var MOCK_BACKUP_STATUS = { nightly: false, everyDays: 3, lastBackup: null, lastRecords: null };
+  var MOCK_BACKUP_STATUS = { nightly: false, everyDays: 3, lastBackup: null, lastRecords: null,
+                             documents: { lastBackup: null, saved: null, total: null } };
 
   // Google Sheet export state (getSheetStatus)
   var MOCK_SHEET_STATUS = { sheetId: null, url: null, scheduled: false,
